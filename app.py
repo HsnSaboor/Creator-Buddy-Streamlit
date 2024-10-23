@@ -3,12 +3,14 @@ import subprocess
 import os
 import asyncio
 from playwright.async_api import async_playwright
+import platform
+import psutil
 
 # Async function to run Playwright test
 async def run_playwright_test():
     """Run Playwright to test the Streamlit app and take a screenshot"""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)  # Set headless=True if you want headless browsing
+        browser = await p.chromium.launch(headless=False)  # Set headless=True if you want headless browsing
         page = await browser.new_page()
 
         try:
@@ -44,13 +46,47 @@ async def run_playwright_test():
             # Close the browser
             await browser.close()
 
+# Function to get machine specifications
+def get_machine_specs():
+    """Returns a dictionary with machine specifications"""
+    specs = {
+        "Platform": platform.system(),
+        "Platform Release": platform.release(),
+        "Platform Version": platform.version(),
+        "Architecture": platform.machine(),
+        "Processor": platform.processor(),
+        "CPU Cores": psutil.cpu_count(logical=True),
+        "Memory (GB)": round(psutil.virtual_memory().total / (1024 ** 3), 2),
+        "Disk Usage (Total)": f"{round(psutil.disk_usage('/').total / (1024 ** 3), 2)} GB",
+        "Disk Usage (Used)": f"{round(psutil.disk_usage('/').used / (1024 ** 3), 2)} GB",
+        "Disk Usage (Free)": f"{round(psutil.disk_usage('/').free / (1024 ** 3), 2)} GB"
+    }
+    
+    # Handling shared CPU environments
+    try:
+        shared_cpu = os.environ.get('CPU')
+        if shared_cpu:
+            specs['Shared CPU Environment'] = "Yes"
+        else:
+            specs['Shared CPU Environment'] = "No"
+    except Exception as e:
+        specs['Shared CPU Environment'] = f"Unknown ({e})"
+    
+    return specs
+
 # Streamlit App UI
-st.title("Streamlit App with Playwright Testing")
-st.write("This app runs a Playwright test on itself asynchronously.")
+st.title("Streamlit App with Playwright Testing and System Specs")
+st.write("This app runs a Playwright test and displays the machine specs.")
 
 # Button to start the Playwright test
 if st.button("Run Playwright Test"):
     st.write("Running Playwright test...")
-
+    
     # Run the async Playwright test
     asyncio.run(run_playwright_test())
+
+# Display Machine Specifications
+st.subheader("Machine Specifications")
+specs = get_machine_specs()
+for key, value in specs.items():
+    st.write(f"**{key}**: {value}")
