@@ -5,7 +5,6 @@ import asyncio
 from playwright.async_api import async_playwright
 import platform
 import psutil
-import re
 
 # Async function to run Playwright test
 async def run_playwright_test():
@@ -75,26 +74,6 @@ def get_machine_specs():
     
     return specs
 
-def clean_neofetch_output(output):
-    """Remove ANSI escape codes and format the output."""
-    # Regular expression to remove ANSI escape codes
-    ansi_escape = re.compile(r'\x1B\[[0-?9;]*[mG]')
-    clean_output = ansi_escape.sub('', output)
-
-    # Split the output into lines and create a more readable format
-    lines = clean_output.splitlines()
-    formatted_output = "```\n"  # Start code block
-
-    for line in lines:
-        # Adding extra styling for sections
-        if 'OS' in line or 'Host' in line or 'Kernel' in line or 'Uptime' in line or 'Packages' in line or 'Shell' in line or 'Terminal' in line or 'CPU' in line or 'Memory' in line:
-            formatted_output += f"**{line.strip()}**\n"
-        else:
-            formatted_output += f"{line.strip()}\n"
-
-    formatted_output += "```"  # End code block
-    return formatted_output
-
 # Function to run neofetch and return its output
 def run_neofetch():
     """Run neofetch and return its output."""
@@ -124,10 +103,7 @@ specs = get_machine_specs()
 for key, value in specs.items():
     st.write(f"**{key}**: {value}")
 
-# Streamlit App UI
-st.title("System Information")
+# Display output of neofetch in a code block
 st.subheader("Neofetch Output")
 neofetch_output = run_neofetch()
-beautified_output = clean_neofetch_output(neofetch_output)
-st.markdown(beautified_output)  # Displaying in markdown for better formatting
-
+st.code(neofetch_output, language='bash')  # Using code block for better formatting
