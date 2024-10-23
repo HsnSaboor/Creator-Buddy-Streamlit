@@ -75,18 +75,6 @@ def get_machine_specs():
     
     return specs
 
-# Function to run neofetch and return its output
-def run_neofetch():
-    """Run neofetch and return its output."""
-    try:
-        # Run the neofetch command and capture the output
-        result = subprocess.run(['neofetch'], capture_output=True, text=True)
-        return result.stdout
-    except FileNotFoundError:
-        return "neofetch is not installed. Please install it to see system information."
-    except Exception as e:
-        return f"Error running neofetch: {e}"
-
 def clean_neofetch_output(output):
     """Remove ANSI escape codes and format the output."""
     # Regular expression to remove ANSI escape codes
@@ -99,13 +87,25 @@ def clean_neofetch_output(output):
 
     for line in lines:
         # Adding extra styling for sections
-        if 'OS' in line or 'Host' in line or 'Kernel' in line or 'Uptime' in line:
+        if 'OS' in line or 'Host' in line or 'Kernel' in line or 'Uptime' in line or 'Packages' in line or 'Shell' in line or 'Terminal' in line or 'CPU' in line or 'Memory' in line:
             formatted_output += f"**{line.strip()}**\n"
         else:
             formatted_output += f"{line.strip()}\n"
 
     formatted_output += "```"  # End code block
     return formatted_output
+
+# Function to run neofetch and return its output
+def run_neofetch():
+    """Run neofetch and return its output."""
+    try:
+        # Run the neofetch command and capture the output
+        result = subprocess.run(['neofetch'], capture_output=True, text=True)
+        return result.stdout
+    except FileNotFoundError:
+        return "neofetch is not installed. Please install it to see system information."
+    except Exception as e:
+        return f"Error running neofetch: {e}"
 
 # Streamlit App UI
 st.title("Streamlit App with Playwright Testing and System Specs")
@@ -124,8 +124,10 @@ specs = get_machine_specs()
 for key, value in specs.items():
     st.write(f"**{key}**: {value}")
 
-# Display output of neofetch in a code block
+# Streamlit App UI
+st.title("System Information")
 st.subheader("Neofetch Output")
 neofetch_output = run_neofetch()
 beautified_output = clean_neofetch_output(neofetch_output)
-st.markdown(beautified_output)  # Using markdown for better formatting
+st.markdown(beautified_output)  # Displaying in markdown for better formatting
+
