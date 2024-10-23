@@ -6,17 +6,10 @@ from playwright.async_api import async_playwright
 import platform
 import psutil
 
-# Install Playwright using subprocess.run
-subprocess.run(["pip", "install", "playwright"])
-
-# Install the necessary browsers for Playwright
-subprocess.run(["playwright", "install"])
-
-
 # Install Playwright using os.system
 os.system("pip install playwright")
 
-# Install the necessary browsers for Playwright
+# Install the necessary browsers for Playwrighte
 os.system("playwright install-deps")
 
 
