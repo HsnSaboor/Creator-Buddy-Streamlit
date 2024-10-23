@@ -8,9 +8,9 @@ import psutil
 
 # Async function to run Playwright test
 async def run_playwright_test():
-    """Run Playwright to test the Streamlit app and take a screenshot"""
+    """Run Playwright to test the Streamlit app and take a screenshot."""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)  # Set headless=True if you want headless browsing
+        browser = await p.chromium.launch(headless=False)  # Set headless=True for headless browsing
         page = await browser.new_page()
 
         try:
@@ -48,7 +48,7 @@ async def run_playwright_test():
 
 # Function to get machine specifications
 def get_machine_specs():
-    """Returns a dictionary with machine specifications"""
+    """Returns a dictionary with machine specifications."""
     specs = {
         "Platform": platform.system(),
         "Platform Release": platform.release(),
@@ -74,6 +74,18 @@ def get_machine_specs():
     
     return specs
 
+# Function to run fastfetch and return its output
+def run_neofetch():
+    """Run fastfetch and return its output."""
+    try:
+        # Run the fastfetch command and capture the output
+        result = subprocess.run(['neofetch'], capture_output=True, text=True)
+        return result.stdout
+    except FileNotFoundError:
+        return "neofetch is not installed. Please install it to see system information."
+    except Exception as e:
+        return f"Error running neofetch: {e}"
+
 # Streamlit App UI
 st.title("Streamlit App with Playwright Testing and System Specs")
 st.write("This app runs a Playwright test and displays the machine specs.")
@@ -90,3 +102,9 @@ st.subheader("Machine Specifications")
 specs = get_machine_specs()
 for key, value in specs.items():
     st.write(f"**{key}**: {value}")
+
+# Display output of fastfetch
+st.subheader("Fastfetch Output")
+fastfetch_output = run_fastfetch()
+st.text_area("Fastfetch Output", value=fastfetch_output, height=300)
+
