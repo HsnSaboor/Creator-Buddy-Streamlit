@@ -1,0 +1,16 @@
+libnss3
+libnspr4
+libatk2
+libatk-bridge2
+libcups2
+libdrm2
+libatspi2
+libxcomposite1
+libxdamage1
+libxfixes3
+libxrandr2
+libgbm1
+libxkbcommon0
+libpango
+libcairo2
+libasound2
