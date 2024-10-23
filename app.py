@@ -10,7 +10,7 @@ import psutil
 os.system("pip install playwright")
 
 # Install the necessary browsers for Playwrighte
-os.system("playwright install-deps")
+os.system("playwright install")
 
 
 
