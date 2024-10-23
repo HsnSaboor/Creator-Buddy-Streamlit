@@ -2,7 +2,15 @@ libx11-6
 libwoff1
 libevent-2.1-7
 libopus0
-libharfbuzz-icu.0
+libharfbuzz0b
+libvpx6
+libxcb-shm0
+libasound2
+libxcb-render0
+libpango-1.0-0
+libstdc++6
+libxcb-xfixes0
+libharfbuzz-dev
 libenchant-2-2
 libsecret-1-0
 libhyphen0
@@ -12,7 +20,8 @@ libegl1
 libglx0
 libgudev-1.0-0
 libgles2
-libx264-164
+libx264
+libc6
 libnss3
 neofetch
 libnspr4
