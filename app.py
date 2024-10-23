@@ -105,6 +105,6 @@ for key, value in specs.items():
 
 # Display output of fastfetch
 st.subheader("Fastfetch Output")
-fastfetch_output = run_fastfetch()
-st.text_area("Fastfetch Output", value=fastfetch_output, height=300)
+neofetch_output = run_neofetch()
+st.text_area("Neofetch Output", value=neofetch_output, height=300)
 
