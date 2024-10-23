@@ -12,6 +12,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
 import streamlit as st
+from concurrent.futures import ThreadPoolExecutor
 
 # Install Playwright using os.system
 os.system("pip install playwright")
@@ -39,6 +40,7 @@ RESOLUTIONS = [
 
 BROWSERS = ["chromium"]
 
+# Helper Functions
 def convert_yt_redirect_to_normal_link(redirect_url):
     parsed_url = urlparse(redirect_url)
     query_params = parse_qs(parsed_url.query)
@@ -56,15 +58,15 @@ def convert_hashtag_to_link(hashtag):
 async def process_videos(video_ids):
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
-
-    tasks = [extract_video_data(video_id, output_dir) for video_id in video_ids]
-    await asyncio.gather(*tasks)
-
-    # Create a zip file of all markdown files
+    
     zip_filename = "video_data.zip"
     with zipfile.ZipFile(zip_filename, 'w') as zip_file:
-        for md_file in output_dir.glob("*.md"):
-            zip_file.write(md_file, md_file.name)
+        for index, video_id in enumerate(video_ids):
+            progress_text = f"Processing Video ID: {video_id}"
+            st.write(progress_text)
+            await extract_video_data(video_id, output_dir)
+            zip_file.write(output_dir / f"{video_id}.md", f"{video_id}.md")
+            st.progress((index + 1) / len(video_ids))  # Update progress bar
     return zip_filename
 
 async def extract_video_data(video_id, output_dir):
@@ -89,27 +91,24 @@ async def extract_video_data(video_id, output_dir):
         await context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["video", "audio", "font"] else route.continue_())
 
         page = await context.new_page()
-
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         await page.goto(video_url, wait_until="networkidle")
 
-        logging.info(f"Starting Extraction Process for video ID: {video_id}")
-
-        if "m.youtube.com" in page.url:
-            await page.goto(video_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
-
-        selector = 'tp-yt-paper-button#expand'
-
         try:
+            if "m.youtube.com" in page.url:
+                await page.goto(video_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
+
+            selector = 'tp-yt-paper-button#expand'
             await page.wait_for_selector(selector, timeout=5000)
+
             expand_button = await page.query_selector(selector)
             if expand_button:
                 await expand_button.click()
-                print(f"Successfully clicked the button with selector: {selector}")
 
             content = await page.content()
             tree = html.fromstring(content)
 
+            # Remove unwanted elements
             for elem in tree.xpath('//head | //style | //script'):
                 elem.getparent().remove(elem)
 
@@ -129,86 +128,35 @@ async def extract_video_data(video_id, output_dir):
             # Extract Likes
             like_button_selector = '//button[contains(@class, "yt-spec-button-shape-next") and @title="I like this"]'
             likes_element = await page.query_selector(like_button_selector)
-
+            likes = "0"
             if likes_element:
-                # Get the aria-label attribute from the like button
                 aria_label = await likes_element.get_attribute('aria-label')
-                
                 if aria_label:
                     match = re.search(r'(\d[\d,]*)', aria_label)
                     likes = match.group(1) if match else "0"
-                else:
-                    likes = "0"
-            else:
-                likes = "0"
 
             # Extract Heatmap SVG
             heatmap_svg = await extract_heatmap_svgs(page)
 
-            # Ensure unique description and links to avoid repetition
-            description_elements = tree.xpath('//ytd-text-inline-expander[@id="description-inline-expander"]//yt-attributed-string[@user-input=""]//span[@class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap"]')
-            description_parts = []
-            links = set()
-
-            for element in description_elements:
-                text_content = element.text_content().strip()
-                if text_content and text_content not in description_parts:
-                    description_parts.append(text_content)
-                for link in element.xpath('.//a'):
-                    link_text = link.text_content().strip()
-                    link_href = link.get('href')
-                    if link_text and link_href and link_href not in links:
-                        if link_href.startswith('https://www.youtube.com/redirect'):
-                            link_href = convert_yt_redirect_to_normal_link(link_href)
-                        elif link_href.startswith('/watch?'):
-                            link_href = convert_yt_watch_to_full_link(link_href)
-                        elif link_href.startswith('/hashtag/'):
-                            link_text = convert_hashtag_to_link(link_text)
-                            link_href = f"https://www.youtube.com{link_href}"
-                        description_parts.append(f"[{link_text}]({link_href})")
-                        links.add(link_href)
-
-            description = ' '.join(description_parts)
+            # Extract Description
+            description = await extract_description(tree)
 
             # Extract Duration
             duration_element = tree.xpath('//span[@class="ytp-time-duration"]')
             duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
 
-            # XPath to specifically target the first <span> within the yt-formatted-string under the comments section
-            comments_xpath = "//div[@id='leading-section']//h2[@id='count']//yt-formatted-string/span[1]/text()"
-            comment_count_element = tree.xpath(comments_xpath)
-            comment_count = comment_count_element[0] if comment_count_element else None
-
-            # Print the result
-            print(f"Total number of comments: {comment_count}")
-
+            # Extract Comments
             comments = await extract_comments(video_id)
             beautified_comments = [{"author": comment['author'], "text": re.sub(r'<.*?>', '', comment['text'])} for comment in comments]
-            
-            logging.info(f"Creating Output Markdown for video ID: {video_id}")
 
             # Create Markdown content
-            markdown_content = f""" {title}
+            markdown_content = create_markdown_content(video_id, title, views, publish_time, tags, likes, duration, description, heatmap_svg, beautified_comments)
 
-        # Video Statistics
-
-        - **Video ID:** {video_id}
-        - **Title:** {title}
-        - **Views:** {views}  
-        - **Publish Time:** {publish_time}  
-        - **Tags:** {', '.join(tags)}  
-        - **Likes:** {likes}  
-        - **Duration:** {duration}  
-        - **Description:** {description}  
-        - **Heatmap SVG:** ![Heatmap SVG]({heatmap_svg if heatmap_svg else 'No heatmap available'})
-
-        ## Comments
-        {''.join([f"- {comment['author']}: {comment['text']}\n" for comment in beautified_comments]) if beautified_comments else "No comments available."}
-        """
             # Write Markdown content to file
             md_file_path = output_dir / f"{video_id}.md"
             with open(md_file_path, "w", encoding="utf-8") as md_file:
                 md_file.write(markdown_content)
+
             logging.info(f"Markdown file created for video ID: {video_id}")
 
         except PlaywrightTimeoutError:
@@ -224,19 +172,13 @@ async def extract_comments(video_id, limit=20):
     return list(islice(comments, limit))
 
 async def extract_heatmap_svgs(page):
-    # Wait for the network to be idle to ensure all resources have loaded
-    try:
-        await page.wait_for_load_state('networkidle')
-        logging.info("Network idle state reached")
-    except Exception as e:
-        return f"Timeout waiting for network idle: {e}"
+    await page.wait_for_load_state('networkidle')
+    logging.info("Network idle state reached")
 
-        # Wait for the heatmap container to be visible
     try:
         await page.wait_for_selector('div.ytp-heat-map-container', state='hidden', timeout=10000)
     except Exception as e:
         return f"Timeout waiting for heatmap container: {e}"
-
 
     heatmap_container = await page.query_selector('div.ytp-heat-map-container')
     if heatmap_container:
@@ -253,64 +195,48 @@ async def extract_heatmap_svgs(page):
     if not heatmap_elements:
         return "Heatmap SVG not found"
 
-    # Calculate the total width and height of the combined SVG
-    total_width = sum(get_pixel_value(elem.attrib['width']) for elem in heatmap_elements)
-    total_height = max(get_pixel_value(elem.attrib['height']) for elem in heatmap_elements)
+    # Calculate the total width and height of the SVG elements
+    svg_data = []
+    for idx, svg in enumerate(heatmap_elements):
+        svg_str = etree.tostring(svg).decode()
+        svg_data.append(f"SVG Heatmap {idx+1}:\n" + svg_str)
 
-    # Create a new SVG element to hold the combined SVGs
-    combined_svg = etree.Element('svg', {
-        'xmlns': 'http://www.w3.org/2000/svg',
-        'width': f'{total_width}px',
-        'height': f'{total_height}px',
-        'viewBox': f'0 0 {total_width} {total_height}'
-    })
+    return "\n\n".join(svg_data)
 
-    # Position each SVG element horizontally
-    current_x = 0
-    for elem in heatmap_elements:
-        # Get the width and height of the current SVG
-        width = get_pixel_value(elem.attrib['width'])
-        height = get_pixel_value(elem.attrib['height'])
+def create_markdown_content(video_id, title, views, publish_time, tags, likes, duration, description, heatmap_svg, comments):
+    comments_section = '\n\n'.join([f"**{comment['author']}**: {comment['text']}" for comment in comments])
 
-        # Create a new group element to hold the current SVG and position it
-        group = etree.SubElement(combined_svg, 'g', {
-            'transform': f'translate({current_x}, 0)'
-        })
+    return f"""# Video Data for {video_id}
 
-        # Copy the current SVG's children to the new group
-        for child in elem.getchildren():
-            group.append(child)
+## Title: {title}
+## Views: {views}
+## Publish Time: {publish_time}
+## Tags: {', '.join(tags)}
+## Likes: {likes}
+## Duration: {duration}
 
-        # Move the x position for the next SVG
-        current_x += width
+### Description:
+{description}
 
-    # Convert the combined SVG to a string
-    combined_svg_str = etree.tostring(combined_svg, pretty_print=True).decode('utf-8')
+### Heatmap SVGs:
+{heatmap_svg}
 
-    return combined_svg_str
+### Comments:
+{comments_section}
+"""
 
+# Streamlit UI
+st.title("YouTube Video Data Extractor")
+video_ids_input = st.text_area("Enter YouTube Video IDs (comma-separated):", "")
+video_ids = [video_id.strip() for video_id in video_ids_input.split(',') if video_id.strip()]
 
-# Helper function to get pixel value
-def get_pixel_value(value):
-    if 'px' in value:
-        return int(value.replace('px', ''))
-    elif '%' in value:
-        # Assuming the parent container's width is 1000px for simplicity
-        return int(float(value.replace('%', '')) * 10)
+if st.button("Process Videos"):
+    if video_ids:
+        st.write("Processing videos, please wait...")
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            loop = asyncio.get_event_loop()
+            zip_filename = loop.run_until_complete(process_videos(video_ids))
+            st.success("Processing complete! Download your ZIP file below:")
+            st.download_button("Download ZIP", zip_filename)
     else:
-        raise ValueError(f"Unsupported width/height format: {value}")
-
-
-def main():
-    st.title("YouTube Video Data Extractor")
-    video_ids = st.text_area("Enter YouTube Video IDs (one per line):").splitlines()
-    if st.button("Extract Data"):
-        video_ids = list(filter(None, video_ids))  # Filter out empty lines
-        if video_ids:
-            zip_file = asyncio.run(process_videos(video_ids))
-            st.success(f"Data extraction complete! Download your zip file [here](./{zip_file}).")
-        else:
-            st.warning("Please enter at least one video ID.")
-
-if __name__ == "__main__":
-    main()
+        st.error("Please enter at least one valid Video ID.")
