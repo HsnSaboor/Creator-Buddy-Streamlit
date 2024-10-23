@@ -106,4 +106,4 @@ for key, value in specs.items():
 # Display output of neofetch in a code block
 st.subheader("Neofetch Output")
 neofetch_output = run_neofetch()
-st.code(neofetch_output, language='bash')  # Using code block for better formatting
+st.code(neofetch_output)  # Using code block for better formatting
