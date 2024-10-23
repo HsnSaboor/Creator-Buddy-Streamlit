@@ -5,6 +5,7 @@ import random
 import re
 import os
 import zipfile
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from itertools import islice
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
 from lxml import html, etree
