@@ -176,12 +176,16 @@ async def extract_video_data(video_id):
             for comment in beautified_comments:
                 markdown_content += f"| {comment['author']} | {comment['text']} |\n"
 
-            # Save Markdown content to a file with the correct video_id
-            with open(f'{title}_data.md', 'w', encoding='utf-8') as md_file:
+            # Save Markdown content to a cache
+            markdown_file_name = f"{title}_data.md"
+            st.cache_data(memoize=True)(lambda: markdown_content)()
+
+            # Write content to a markdown file
+            with open(markdown_file_name, 'w', encoding='utf-8') as md_file:
                 md_file.write(markdown_content)
 
             logging.info("Extraction and Markdown file creation completed successfully.")
-            return f'{title}_data.md'
+            return markdown_file_name
 
         except PlaywrightTimeoutError:
             logging.error(f"Failed to extract data for video ID: {video_id}")
@@ -220,6 +224,13 @@ async def extract_comments(video_id, limit=20):
 def run_extraction(video_id):
     return asyncio.run(extract_video_data(video_id))
 
+def create_zip_file(markdown_files):
+    zip_filename = "extracted_data.zip"
+    with zipfile.ZipFile(zip_filename, 'w') as zipf:
+        for markdown_file in markdown_files:
+            zipf.write(markdown_file)
+    return zip_filename
+
 def main():
     st.title("YouTube Video Data Extractor")
 
@@ -236,11 +247,14 @@ def main():
                         markdown_files = list(executor.map(run_extraction, video_ids))
 
                     successful_files = [file for file in markdown_files if file]
+
                     if successful_files:
-                        st.success(f"Data extracted successfully! Markdown files created: {', '.join(successful_files)}")
-                        for markdown_file in successful_files:
-                            with open(markdown_file, 'rb') as file:
-                                st.download_button(f"Download {markdown_file}", file, file_name=markdown_file)
+                        # Create a zip file for all markdown files
+                        zip_file_path = create_zip_file(successful_files)
+                        st.success(f"Data extracted successfully! Zip file created: {zip_file_path}")
+                        with open(zip_file_path, 'rb') as file:
+                            st.download_button("Download Zip File", file, file_name=zip_file_path)
+
                     else:
                         st.error("Failed to extract data for all video IDs. Please check the Video IDs.")
 
