@@ -4,7 +4,6 @@ import zipfile
 import logging
 import random
 import re
-from itertools import islice
 from concurrent.futures import ProcessPoolExecutor
 import streamlit as st
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
@@ -206,41 +205,43 @@ async def extract_heatmap_svgs(page):
     heatmap_elements = tree.xpath('//svg')
 
     if not heatmap_elements:
-        return "Heatmap SVG not found"
+        return "No heatmap SVG found"
 
-    # Extract and return the SVG content
+    # Convert SVG elements to string and return
     heatmap_svg_content = etree.tostring(heatmap_elements[0], pretty_print=True, encoding='unicode')
     return heatmap_svg_content
 
 async def extract_comments(video_id, limit=20):
     downloader = YoutubeCommentDownloader()
-    comments = downloader.get_comments(video_id)
+    comments = downloader.get_comments(video_id, sort=SORT_BY_RECENT)
     return list(islice(comments, limit))
 
 def run_extraction(video_id):
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(extract_video_data(video_id))
+    return asyncio.run(extract_video_data(video_id))
 
 def main():
     st.title("YouTube Video Data Extractor")
-    
-    video_id = st.text_input("Enter YouTube Video ID", value="")
-    
+
+    video_ids = st.text_area("Enter YouTube Video IDs (comma-separated)", value="").split(',')
+
     if st.button("Extract Data"):
-        if video_id:
-            logging.info(f"Button pressed for video ID: {video_id}")
+        if video_ids:
+            video_ids = [video_id.strip() for video_id in video_ids if video_id.strip()]
+            logging.info(f"Button pressed for video IDs: {video_ids}")
             with st.spinner("Extracting data..."):
                 try:
-                    # Run the extraction in a separate process to avoid blocking Streamlit
+                    # Use ProcessPoolExecutor for parallel processing of video IDs
                     with ProcessPoolExecutor() as executor:
-                        markdown_file = executor.submit(run_extraction, video_id).result()
+                        markdown_files = list(executor.map(run_extraction, video_ids))
 
-                    if markdown_file:
-                        st.success(f"Data extracted successfully! Markdown file created: {markdown_file}")
-                        with open(markdown_file, 'rb') as file:
-                            st.download_button("Download Markdown", file, file_name=markdown_file)
+                    successful_files = [file for file in markdown_files if file]
+                    if successful_files:
+                        st.success(f"Data extracted successfully! Markdown files created: {', '.join(successful_files)}")
+                        for markdown_file in successful_files:
+                            with open(markdown_file, 'rb') as file:
+                                st.download_button(f"Download {markdown_file}", file, file_name=markdown_file)
                     else:
-                        st.error("Failed to extract data. Please check the Video ID.")
+                        st.error("Failed to extract data for all video IDs. Please check the Video IDs.")
 
                 except Exception as e:
                     logging.error(f"An error occurred during extraction: {e}")
