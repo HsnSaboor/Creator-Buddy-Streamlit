@@ -11,6 +11,7 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
+import requests  # For TempCloud integration
 
 # Install Playwright using os.system (this should only be done once)
 os.system("pip install playwright")
@@ -176,11 +177,8 @@ async def extract_video_data(video_id):
             for comment in beautified_comments:
                 markdown_content += f"| {comment['author']} | {comment['text']} |\n"
 
-            # Save Markdown content to a cache
-            markdown_file_name = f"{title}_data.md"
-            st.cache_data(memoize=True)(lambda: markdown_content)()
-
             # Write content to a markdown file
+            markdown_file_name = f"{title}_data.md"
             with open(markdown_file_name, 'w', encoding='utf-8') as md_file:
                 md_file.write(markdown_content)
 
@@ -196,71 +194,69 @@ async def extract_video_data(video_id):
             await browser.close()
 
 async def extract_heatmap_svgs(page):
-    # Wait for the network to be idle to ensure all resources have loaded
     await page.wait_for_load_state('networkidle')
-
     heatmap_container = await page.query_selector('div.ytp-heat-map-container')
     if heatmap_container:
         heatmap_container_html = await heatmap_container.inner_html()
-    else:
-        return "Heatmap container not found"
+        # Use lxml to parse the heatmap SVG
+        tree = etree.HTML(heatmap_container_html)
+        svg_element = tree.xpath('//svg')
+        if svg_element:
+            return etree.tostring(svg_element[0]).decode()
+    return "No heatmap SVG found"
 
-    # Parse the HTML content
-    tree = html.fromstring(heatmap_container_html)
-    heatmap_elements = tree.xpath('//svg')
-
-    if not heatmap_elements:
-        return "No heatmap SVG found"
-
-    # Convert SVG elements to string and return
-    heatmap_svg_content = etree.tostring(heatmap_elements[0], pretty_print=True, encoding='unicode')
-    return heatmap_svg_content
-
-async def extract_comments(video_id, limit=20):
+async def extract_comments(video_id):
     downloader = YoutubeCommentDownloader()
     comments = downloader.get_comments(video_id, sort_by=SORT_BY_RECENT)
-    return list(islice(comments, limit))
+    return comments
 
-def run_extraction(video_id):
-    return asyncio.run(extract_video_data(video_id))
+def create_zip_file(file_names, output_zip_name):
+    with zipfile.ZipFile(output_zip_name, 'w') as zip_file:
+        for file_name in file_names:
+            zip_file.write(file_name, os.path.basename(file_name))
 
-def create_zip_file(markdown_files):
-    zip_filename = "extracted_data.zip"
-    with zipfile.ZipFile(zip_filename, 'w') as zipf:
-        for markdown_file in markdown_files:
-            zipf.write(markdown_file)
-    return zip_filename
+def upload_to_tempcloud(file_path):
+    # Replace with your TempCloud API URL and authentication details
+    tempcloud_api_url = "https://api.tempcloud.io/upload"
+    with open(file_path, 'rb') as file:
+        response = requests.post(tempcloud_api_url, files={'file': file})
+        if response.status_code == 200:
+            return response.json()['url']  # Assuming the response contains a URL to the uploaded file
+        else:
+            logging.error(f"Failed to upload to TempCloud: {response.status_code} - {response.text}")
+            return None
 
 def main():
-    st.title("YouTube Video Data Extractor")
+    st.title("YouTube Data Extractor")
+    video_id = st.text_input("Enter YouTube Video ID:", "")
+    start_button = st.button("Extract Data")
 
-    video_ids = st.text_area("Enter YouTube Video IDs (comma-separated)", value="").split(',')
+    if start_button and video_id:
+        st.write("Extracting data, please wait...")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-    if st.button("Extract Data"):
-        if video_ids:
-            video_ids = [video_id.strip() for video_id in video_ids if video_id.strip()]
-            logging.info(f"Button pressed for video IDs: {video_ids}")
-            with st.spinner("Extracting data..."):
-                try:
-                    # Use ProcessPoolExecutor for parallel processing of video IDs
-                    with ProcessPoolExecutor() as executor:
-                        markdown_files = list(executor.map(run_extraction, video_ids))
+        # Extract video data asynchronously
+        file_name = loop.run_until_complete(extract_video_data(video_id))
 
-                    successful_files = [file for file in markdown_files if file]
+        if file_name:
+            zip_file_name = f"{video_id}_data.zip"
+            create_zip_file([file_name], zip_file_name)
+            st.success(f"Data extracted successfully! Files are saved to {zip_file_name}")
 
-                    if successful_files:
-                        # Create a zip file for all markdown files
-                        zip_file_path = create_zip_file(successful_files)
-                        st.success(f"Data extracted successfully! Zip file created: {zip_file_path}")
-                        with open(zip_file_path, 'rb') as file:
-                            st.download_button("Download Zip File", file, file_name=zip_file_path)
+            # Upload files to TempCloud and get URLs
+            uploaded_urls = []
+            for file in [file_name, zip_file_name]:
+                uploaded_url = upload_to_tempcloud(file)
+                if uploaded_url:
+                    uploaded_urls.append(uploaded_url)
 
-                    else:
-                        st.error("Failed to extract data for all video IDs. Please check the Video IDs.")
-
-                except Exception as e:
-                    logging.error(f"An error occurred during extraction: {e}")
-                    st.error("An unexpected error occurred. Please try again.")
+            # Provide download links to the user
+            st.write("Download your files:")
+            for url in uploaded_urls:
+                st.markdown(f"[Download here]({url})")
+        else:
+            st.error("Failed to extract video data.")
 
 if __name__ == "__main__":
     main()
