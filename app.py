@@ -10,7 +10,7 @@ import psutil
 async def run_playwright_test():
     """Run Playwright to test the Streamlit app and take a screenshot."""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)  # Set headless=True for headless browsing
+        browser = await p.chromium.launch(headless=True)  # Set headless=True for headless browsing
         page = await browser.new_page()
 
         try:
