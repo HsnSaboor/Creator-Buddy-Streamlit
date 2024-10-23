@@ -233,10 +233,8 @@ video_ids = [video_id.strip() for video_id in video_ids_input.split(',') if vide
 if st.button("Process Videos"):
     if video_ids:
         st.write("Processing videos, please wait...")
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            loop = asyncio.get_event_loop()
-            zip_filename = loop.run_until_complete(process_videos(video_ids))
-            st.success("Processing complete! Download your ZIP file below:")
-            st.download_button("Download ZIP", zip_filename)
+        zip_filename = asyncio.run(process_videos(video_ids))  # Updated here
+        st.success("Processing complete! Download your ZIP file below:")
+        st.download_button("Download ZIP", zip_filename)
     else:
         st.error("Please enter at least one valid Video ID.")
