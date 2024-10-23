@@ -3,6 +3,7 @@ import pandas as pd
 import logging
 import random
 import re
+import os
 import zipfile
 from itertools import islice
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
