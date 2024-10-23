@@ -5,6 +5,7 @@ import asyncio
 from playwright.async_api import async_playwright
 import platform
 import psutil
+import re
 
 # Async function to run Playwright test
 async def run_playwright_test():
@@ -86,6 +87,25 @@ def run_neofetch():
     except Exception as e:
         return f"Error running neofetch: {e}"
 
+def clean_neofetch_output(output):
+    """Remove ANSI escape codes and format the output."""
+    # Regular expression to remove ANSI escape codes
+    ansi_escape = re.compile(r'\x1B\[[0-?9;]*[mG]')
+    clean_output = ansi_escape.sub('', output)
+
+    # Split the output into lines and create a more readable format
+    lines = clean_output.splitlines()
+    formatted_output = ""
+
+    for line in lines:
+        # Adding extra styling for sections
+        if 'OS' in line or 'Host' in line or 'Kernel' in line or 'Uptime' in line:
+            formatted_output += f"**{line.strip()}**\n\n"
+        else:
+            formatted_output += f"{line.strip()}\n"
+
+    return formatted_output
+
 # Streamlit App UI
 st.title("Streamlit App with Playwright Testing and System Specs")
 st.write("This app runs a Playwright test and displays the machine specs.")
@@ -106,4 +126,5 @@ for key, value in specs.items():
 # Display output of neofetch in a code block
 st.subheader("Neofetch Output")
 neofetch_output = run_neofetch()
-st.code(neofetch_output)  # Using code block for better formatting
+beautified_output = clean_neofetch_output(neofetch_output)
+st.markdown(beautified_output)  # Using markdown for better formatting
