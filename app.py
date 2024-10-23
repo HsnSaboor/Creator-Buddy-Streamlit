@@ -4,17 +4,15 @@ import logging
 import random
 import re
 import zipfile
-import os
 from itertools import islice
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
-from pathlib import Path
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
 import streamlit as st
 from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 
-# Install Playwright using os.system
+# Install Playwright using os.system (this should only be done once)
 os.system("pip install playwright")
 # Install the necessary browsers for Playwright
 os.system("playwright install")
@@ -56,21 +54,22 @@ def convert_hashtag_to_link(hashtag):
     return f"[{hashtag}](https://www.youtube.com/hashtag/{hashtag[1:]})"
 
 async def process_videos(video_ids):
-    output_dir = Path("output")
-    output_dir.mkdir(exist_ok=True)
-    
-    zip_filename = "video_data.zip"
-    with zipfile.ZipFile(zip_filename, 'w') as zip_file:
+    # Create a BytesIO stream for the ZIP file
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
         for index, video_id in enumerate(video_ids):
             progress_text = f"Processing Video ID: {video_id}"
             st.write(progress_text)
-            await extract_video_data(video_id, output_dir)
-            zip_file.write(output_dir / f"{video_id}.md", f"{video_id}.md")
+            markdown_content = await extract_video_data(video_id)
+            zip_file.writestr(f"{video_id}.md", markdown_content)
             st.progress((index + 1) / len(video_ids))  # Update progress bar
-    return zip_filename
+    
+    zip_buffer.seek(0)  # Move to the beginning of the BytesIO stream
+    return zip_buffer.getvalue()
 
-async def extract_video_data(video_id, output_dir):
+async def extract_video_data(video_id):
     logging.info(f"Extracting video data for video ID: {video_id}")
+    # Use Playwright to gather data
     async with async_playwright() as p:
         browser_type = random.choice(BROWSERS)
         browser = await getattr(p, browser_type).launch(
@@ -152,19 +151,16 @@ async def extract_video_data(video_id, output_dir):
             # Create Markdown content
             markdown_content = create_markdown_content(video_id, title, views, publish_time, tags, likes, duration, description, heatmap_svg, beautified_comments)
 
-            # Write Markdown content to file
-            md_file_path = output_dir / f"{video_id}.md"
-            with open(md_file_path, "w", encoding="utf-8") as md_file:
-                md_file.write(markdown_content)
+            logging.info(f"Markdown content created for video ID: {video_id}")
 
-            logging.info(f"Markdown file created for video ID: {video_id}")
+            return markdown_content
 
-        except PlaywrightTimeoutError:
-            logging.error(f"Timeout while extracting data for video ID: {video_id}")
         except Exception as e:
             logging.error(f"An error occurred while extracting data for video ID {video_id}: {e}")
+            return ""
 
-        await browser.close()
+        finally:
+            await browser.close()
 
 async def extract_comments(video_id, limit=20):
     downloader = YoutubeCommentDownloader()
@@ -211,30 +207,37 @@ def create_markdown_content(video_id, title, views, publish_time, tags, likes, d
 ## Title: {title}
 ## Views: {views}
 ## Publish Time: {publish_time}
-## Tags: {', '.join(tags)}
+## Tags: {', '.join(tags) if tags else 'No Tags'}
 ## Likes: {likes}
 ## Duration: {duration}
+## Description: {description}
 
-### Description:
-{description}
-
-### Heatmap SVGs:
+## Heatmap SVGs
 {heatmap_svg}
 
-### Comments:
-{comments_section}
+## Comments
+{comments_section if comments else "No comments available."}
 """
 
 # Streamlit UI
 st.title("YouTube Video Data Extractor")
-video_ids_input = st.text_area("Enter YouTube Video IDs (comma-separated):", "")
-video_ids = [video_id.strip() for video_id in video_ids_input.split(',') if video_id.strip()]
+st.write("Enter Video IDs (comma-separated):")
+video_ids_input = st.text_area("Video IDs", "")
+video_ids = [vid.strip() for vid in video_ids_input.split(',') if vid.strip()]
 
-if st.button("Process Videos"):
+if st.button("Extract Data"):
     if video_ids:
-        st.write("Processing videos, please wait...")
-        zip_filename = asyncio.run(process_videos(video_ids))  # Updated here
-        st.success("Processing complete! Download your ZIP file below:")
-        st.download_button("Download ZIP", zip_filename)
+        zip_file = asyncio.run(process_videos(video_ids))
+        
+        # Cache the zip file data
+        st.cache_data(zip_file, allow_output_mutation=True)
+
+        # Provide download button
+        st.download_button(
+            label="Download Zip File",
+            data=zip_file,
+            file_name="youtube_video_data.zip",
+            mime="application/zip"
+        )
     else:
-        st.error("Please enter at least one valid Video ID.")
+        st.warning("Please enter valid Video IDs.")
