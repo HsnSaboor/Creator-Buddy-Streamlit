@@ -74,11 +74,11 @@ def get_machine_specs():
     
     return specs
 
-# Function to run fastfetch and return its output
+# Function to run neofetch and return its output
 def run_neofetch():
     """Run neofetch and return its output."""
     try:
-        # Run the fastfetch command and capture the output
+        # Run the neofetch command and capture the output
         result = subprocess.run(['neofetch'], capture_output=True, text=True)
         return result.stdout
     except FileNotFoundError:
@@ -103,8 +103,7 @@ specs = get_machine_specs()
 for key, value in specs.items():
     st.write(f"**{key}**: {value}")
 
-# Display output of fastfetch
-st.subheader("Fastfetch Output")
+# Display output of neofetch in a code block
+st.subheader("Neofetch Output")
 neofetch_output = run_neofetch()
-st.text_area("Neofetch Output", value=neofetch_output, height=300)
-
+st.code(neofetch_output, language='bash')  # Using code block for better formatting
