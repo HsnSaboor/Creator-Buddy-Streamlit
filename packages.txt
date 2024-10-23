@@ -1,7 +1,5 @@
 libnss3
 libnspr4
-libatk
-libatk-bridge
 libcups2
 libdrm2
 libatspi
@@ -11,6 +9,5 @@ libxfixes3
 libxrandr2
 libgbm1
 libxkbcommon0
-libpango
 libcairo2
 libasound2
