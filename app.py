@@ -47,7 +47,7 @@ async def run_playwright_test():
             await browser.close()
 
 # Function to get machine specifications
-async def get_machine_specs():
+def get_machine_specs():
     """Returns a dictionary with machine specifications."""
     specs = {
         "Platform": platform.system(),
@@ -75,7 +75,7 @@ async def get_machine_specs():
     return specs
 
 # Function to run fastfetch and return its output
-async def run_neofetch():
+def run_neofetch():
     """Run neofetch and return its output."""
     try:
         # Run the fastfetch command and capture the output
