@@ -127,4 +127,4 @@ for key, value in specs.items():
 st.subheader("Neofetch Output")
 neofetch_output = run_neofetch()
 beautified_output = clean_neofetch_output(neofetch_output)
-st.code(beautified_output, language='html')# Using markdown for better formatting
+st.code(beautified_output, language='bash')# Using markdown for better formatting
