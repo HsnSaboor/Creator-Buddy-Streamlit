@@ -1,10 +1,10 @@
 libnss3
 libnspr4
-libatk2
-libatk-bridge2
+libatk
+libatk-bridge
 libcups2
 libdrm2
-libatspi2
+libatspi
 libxcomposite1
 libxdamage1
 libxfixes3
