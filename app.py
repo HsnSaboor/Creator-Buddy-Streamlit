@@ -8,7 +8,7 @@ from playwright.async_api import async_playwright
 async def run_playwright_test():
     """Run Playwright to test the Streamlit app"""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)  # Set headless=True if you don't need a visible browser
+        browser = await p.chromium.launch(headless=True)  # Set headless=True if you don't need a visible browser
         page = await browser.new_page()
 
         try:
