@@ -11,7 +11,6 @@ from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
 
-
 # Install Playwright using os.system (this should only be done once)
 os.system("pip install playwright")
 # Install the necessary browsers for Playwright
@@ -208,54 +207,43 @@ async def extract_heatmap_svgs(page):
     if not heatmap_elements:
         return "Heatmap SVG not found"
 
-    # Extract and return SVG data
-    svg_data = etree.tostring(heatmap_elements[0], pretty_print=True, encoding='unicode')
-    return f"data:image/svg+xml;base64,{svg_data.encode().decode()}"
+    # Extract and return the SVG content
+    heatmap_svg_content = etree.tostring(heatmap_elements[0], pretty_print=True, encoding='unicode')
+    return heatmap_svg_content
 
-async def extract_comments(video_id):
+async def extract_comments(video_id, limit=20):
     downloader = YoutubeCommentDownloader()
-    try:
-        comments = downloader.get_comments(video_id, sort_by=SORT_BY_RECENT)
-        return comments
-    except Exception as e:
-        logging.error(f"Error fetching comments for video ID {video_id}: {e}")
-        return []
+    comments = downloader.get_comments(video_id, sort=SORT_BY_RECENT)
+    return comments
 
-def process_video_ids(video_ids):
-    with ProcessPoolExecutor() as executor:
-        results = executor.map(extract_video_data, video_ids)
-    return list(results)
+def run_extraction(video_id):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(extract_video_data(video_id))
 
 def main():
     st.title("YouTube Video Data Extractor")
     
-    st.subheader("Input Video IDs")
-    video_ids_input = st.text_area("Enter YouTube video IDs (comma-separated)", "")
+    video_id = st.text_input("Enter YouTube Video ID", value="")
     
     if st.button("Extract Data"):
-        if video_ids_input:
-            video_ids = [vid.strip() for vid in video_ids_input.split(",")]
-            if video_ids:
-                st.write("Processing...")
+        if video_id:
+            logging.info(f"Button pressed for video ID: {video_id}")
+            with st.spinner("Extracting data..."):
+                try:
+                    # Run the extraction in a separate process to avoid blocking Streamlit
+                    with ProcessPoolExecutor() as executor:
+                        markdown_file = executor.submit(run_extraction, video_id).result()
 
-                with st.spinner("Extracting video data..."):
-                    results = process_video_ids(video_ids)
+                    if markdown_file:
+                        st.success(f"Data extracted successfully! Markdown file created: {markdown_file}")
+                        with open(markdown_file, 'rb') as file:
+                            st.download_button("Download Markdown", file, file_name=markdown_file)
+                    else:
+                        st.error("Failed to extract data. Please check the Video ID.")
 
-                output_files = []
-                for result in results:
-                    if result:
-                        output_files.append(result)
-
-                if output_files:
-                    zip_file_path = "video_data.zip"
-                    with zipfile.ZipFile(zip_file_path, 'w') as zip_file:
-                        for file in output_files:
-                            zip_file.write(file)
-
-                    st.success(f"Data extraction complete! {len(output_files)} files created.")
-                    with open(zip_file_path, "rb") as f:
-                        st.download_button("Download Zip File", f, file_name=zip_file_path)
+                except Exception as e:
+                    logging.error(f"An error occurred during extraction: {e}")
+                    st.error("An unexpected error occurred. Please try again.")
 
 if __name__ == "__main__":
     main()
-
