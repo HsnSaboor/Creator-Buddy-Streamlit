@@ -95,15 +95,16 @@ def clean_neofetch_output(output):
 
     # Split the output into lines and create a more readable format
     lines = clean_output.splitlines()
-    formatted_output = ""
+    formatted_output = "```\n"  # Start code block
 
     for line in lines:
         # Adding extra styling for sections
         if 'OS' in line or 'Host' in line or 'Kernel' in line or 'Uptime' in line:
-            formatted_output += f"**{line.strip()}**\n\n"
+            formatted_output += f"**{line.strip()}**\n"
         else:
             formatted_output += f"{line.strip()}\n"
 
+    formatted_output += "```"  # End code block
     return formatted_output
 
 # Streamlit App UI
@@ -127,4 +128,4 @@ for key, value in specs.items():
 st.subheader("Neofetch Output")
 neofetch_output = run_neofetch()
 beautified_output = clean_neofetch_output(neofetch_output)
-st.code(beautified_output, language='bash')# Using markdown for better formatting
+st.markdown(beautified_output)  # Using markdown for better formatting
