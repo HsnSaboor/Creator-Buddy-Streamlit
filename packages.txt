@@ -20,14 +20,14 @@ libegl1
 libglx0
 libgudev-1.0-0
 libgles2
-libx264-164
+libx264-dev
 libc6
 libnss3
 neofetch
 libnspr4
 libcups2
 libdrm2
-libxcomposite1e
+libxcomposite1
 libxdamage1
 libxfixes3
 libxrandr2
