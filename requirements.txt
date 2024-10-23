@@ -3,3 +3,4 @@ lxml
 playwright
 playwright-stealth
 lxml-clean-html
+asyncio
