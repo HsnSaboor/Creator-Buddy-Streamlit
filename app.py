@@ -76,7 +76,7 @@ async def get_machine_specs():
 
 # Function to run fastfetch and return its output
 async def run_neofetch():
-    """Run fastfetch and return its output."""
+    """Run neofetch and return its output."""
     try:
         # Run the fastfetch command and capture the output
         result = subprocess.run(['neofetch'], capture_output=True, text=True)
