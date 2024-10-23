@@ -25,7 +25,7 @@ async def run_playwright_test():
 
         try:
             # Navigate to the Streamlit app (make sure it's running on this port)
-            await page.goto("http://localhost:8501")
+            await page.goto("http://youtube.com")
 
             # Check the title of the page
             title = await page.title()
