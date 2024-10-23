@@ -127,5 +127,4 @@ for key, value in specs.items():
 # Display output of neofetch in a code block
 st.subheader("Neofetch Output")
 neofetch_output = run_neofetch()
-beautified_output = clean_neofetch_output(neofetch_output)
-st.markdown(beautified_output)  # Using markdown for better formatting
+st.markdown(formatted_output)  # Using markdown for better formatting
