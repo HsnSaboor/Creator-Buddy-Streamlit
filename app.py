@@ -214,7 +214,7 @@ async def extract_heatmap_svgs(page):
 
 async def extract_comments(video_id, limit=20):
     downloader = YoutubeCommentDownloader()
-    comments = downloader.get_comments(video_id, sort=SORT_BY_RECENT)
+    comments = downloader.get_comments(video_id, sort_by=SORT_BY_RECENT)
     return list(islice(comments, limit))
 
 def run_extraction(video_id):
