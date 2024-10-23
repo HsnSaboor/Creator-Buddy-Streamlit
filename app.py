@@ -6,6 +6,15 @@ from playwright.async_api import async_playwright
 import platform
 import psutil
 
+
+# Install Playwright using os.system
+os.system("pip install playwright")
+
+# Install the necessary browsers for Playwright
+os.system("playwright install")
+
+
+
 # Async function to run Playwright test
 async def run_playwright_test():
     """Run Playwright to test the Streamlit app and take a screenshot."""
