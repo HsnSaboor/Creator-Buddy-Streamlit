@@ -1,5 +1,4 @@
 libnss3
-fastfetch
 neofetch
 libnspr4
 libcups2
