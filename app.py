@@ -4,6 +4,7 @@ import zipfile
 import logging
 import random
 import re
+from itertools import islice
 from concurrent.futures import ProcessPoolExecutor
 import streamlit as st
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
