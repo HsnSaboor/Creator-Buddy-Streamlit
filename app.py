@@ -214,7 +214,7 @@ async def extract_heatmap_svgs(page):
 async def extract_comments(video_id, limit=20):
     downloader = YoutubeCommentDownloader()
     comments = downloader.get_comments(video_id)
-    return comments
+    return list(islice(comments, limit))
 
 def run_extraction(video_id):
     loop = asyncio.get_event_loop()
