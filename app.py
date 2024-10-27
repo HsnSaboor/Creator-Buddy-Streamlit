@@ -1,17 +1,20 @@
-import asyncio
-import os
-import zipfile
-import logging
-import random
-import re
-from itertools import islice
-from concurrent.futures import ProcessPoolExecutor
 import streamlit as st
+import asyncio
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
+import random
+import re
+import logging
+import pandas as pd
+from itertools import islice
+from textblob import TextBlob
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
-import requests  # For TempCloud integration
+import requests
+from PIL import Image
+import pytesseract
+from colorthief import ColorThief
+from io import BytesIO
 
 # Install Playwright using os.system (this should only be done once)
 os.system("pip install playwright")
@@ -54,6 +57,33 @@ def convert_yt_watch_to_full_link(watch_url):
 def convert_hashtag_to_link(hashtag):
     return f"[{hashtag}](https://www.youtube.com/hashtag/{hashtag[1:]})"
 
+def analyze_thumbnail(video_id):
+    # Download and save thumbnail
+    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+    thumbnail_response = requests.get(thumbnail_url)
+    thumbnail_image = Image.open(BytesIO(thumbnail_response.content))
+
+    # Analyze thumbnail colors using ColorThief
+    color_thief = ColorThief(BytesIO(thumbnail_response.content))
+    dominant_color = color_thief.get_color(quality=1)
+    palette = color_thief.get_palette(color_count=6)
+
+    # Extract text from thumbnail using Tesseract OCR
+    thumbnail_text = pytesseract.image_to_string(thumbnail_image)
+
+    return dominant_color, palette, thumbnail_text.strip()
+
+# Calculate sentiment for each comment
+def get_comment_sentiment(comment_text):
+    analysis = TextBlob(comment_text)
+    return "Positive" if analysis.sentiment.polarity > 0 else "Negative"
+
+# Apply sentiment analysis to each comment and determine overall sentiment
+def analyze_comments_sentiment(beautified_comments, comment_count):
+    positive_comments = sum(1 for comment in beautified_comments if get_comment_sentiment(comment['text']) == "Positive")
+    overall_sentiment = "Positive" if positive_comments > (comment_count / 2) else "Negative"
+    return overall_sentiment
+
 async def extract_video_data(video_id):
     logging.info(f"Extracting video data for video ID: {video_id}")
     async with async_playwright() as p:
@@ -78,185 +108,338 @@ async def extract_video_data(video_id):
         page = await context.new_page()
 
         video_url = f"https://www.youtube.com/watch?v={video_id}"
-        await page.goto(video_url, wait_until="networkidle")
+        await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
 
         logging.info(f"Starting Extraction Process for video ID: {video_id}")
 
         if "m.youtube.com" in page.url:
             await page.goto(video_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
 
+        expand_selector = 'tp-yt-paper-button#expand'
+
         try:
-            content = await page.content()
-            tree = html.fromstring(content)
+            await page.wait_for_selector(expand_selector, timeout=5000)
+            expand_button = await page.query_selector(expand_selector)
+            if expand_button:
+                await expand_button.click()
+                print(f"Successfully clicked the button with selector: {expand_selector}")
+        except PlaywrightTimeoutError:
+            logging.warning("Expand button not found.")
 
-            # Extract Title
-            title_element = tree.xpath('//h1[@class="style-scope ytd-watch-metadata"]/yt-formatted-string')
-            title = title_element[0].text_content().strip() if title_element else "Title not found"
+        # Scroll to the bottom to load comments
+        await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        await page.wait_for_timeout(8000)  # Wait to ensure comments load
 
-            # Extract Views, Publish Time, and Tags
-            info_element = tree.xpath('//yt-formatted-string[@id="info"]')
-            if info_element:
-                info_text = info_element[0].text_content().strip()
-                views, publish_time, *tags = info_text.split('  ')
-                tags = [tag.strip() for tag in tags if tag.strip()]
+        content = await page.content()
+        tree = html.fromstring(content)
+
+        for elem in tree.xpath('//head | //style | //script'):
+            elem.getparent().remove(elem)
+
+        # Extract Title
+        title_element = tree.xpath('//h1[@class="style-scope ytd-watch-metadata"]/yt-formatted-string')
+        title = title_element[0].text_content().strip() if title_element else "Title not found"
+
+        # Extract Views, Publish Time, and Tags
+        info_element = tree.xpath('//yt-formatted-string[@id="info"]')
+        if info_element:
+            info_text = info_element[0].text_content().strip()
+            views, publish_time, *tags = info_text.split('  ')
+            tags = [tag.strip() for tag in tags if tag.strip()]
+        else:
+            views, publish_time, tags = "Views not found", "Publish time not found", []
+
+        # Convert views to integer
+        if views != "Views not found":
+            views = int(re.sub(r'\D', '', views))  # Remove non-digit characters and convert to int
+
+        # Extract Likes
+        like_button_selector = '//button[contains(@class, "yt-spec-button-shape-next") and @title="I like this"]'
+        likes_element = await page.query_selector(like_button_selector)
+        likes = "Likes not found"
+        if likes_element:
+            aria_label = await likes_element.get_attribute('aria-label')
+            if aria_label:
+                match = re.search(r'(\d[\d,]*)', aria_label)
+                if match:
+                    likes = int(match.group(1).replace(',', ''))  # Remove commas and convert to int
+
+        # Extract Heatmap SVG
+        heatmap_svg = await extract_heatmap_svgs(page)
+
+        # Extract Description and Links
+        description_elements = tree.xpath('//ytd-text-inline-expander[@id="description-inline-expander"]//yt-attributed-string[@user-input=""]//span[@class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap"]')
+        description_parts = []
+        links = set()  # Use a set to prevent duplicate links
+
+        for element in description_elements:
+            text_content = element.text_content().strip()
+            if text_content and text_content not in description_parts:  # Prevent text duplication
+                description_parts.append(text_content)
+            for link in element.xpath('.//a'):
+                link_text = link.text_content().strip()
+                link_href = link.get('href')
+                if link_text and link_href and link_href not in links:  # Prevent link duplication
+                    if link_href.startswith('https://www.youtube.com/redirect'):
+                        link_href = convert_yt_redirect_to_normal_link(link_href)
+                    elif link_href.startswith('/watch?'):
+                        link_href = convert_yt_watch_to_full_link(link_href)
+                    elif link_href.startswith('/hashtag/'):
+                        link_text = convert_hashtag_to_link(link_text)
+                        link_href = f"https://www.youtube.com{link_href}"
+                    description_parts.append(f"[{link_text}]({link_href})")
+                    links.add(link_href)
+
+        description = ' '.join(description_parts)
+
+        # Extract Duration
+        duration_element = tree.xpath('//span[@class="ytp-time-duration"]')
+        duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
+
+        # Extract Comments
+        comments_xpath = "//div[@id='leading-section']//h2[@id='count']//yt-formatted-string[@class='count-text style-scope ytd-comments-header-renderer']/span[1]/text()"
+        comment_count_element = tree.xpath(comments_xpath)
+        if comment_count_element:
+            comment_count_text = comment_count_element[0]
+            logging.info(f"Extracted comment count text: {comment_count_text}")
+            if comment_count_text.isdigit():
+                comment_count = int(comment_count_text)
             else:
-                views, publish_time, tags = "Views not found", "Publish time not found", []
+                comment_count = int(''.join(filter(str.isdigit, comment_count_text)))
+        else:
+            logging.warning("Comment count element not found")
+            comment_count = 1
 
-            # Extract Likes
-            like_button_selector = '//button[contains(@class, "yt-spec-button-shape-next") and @title="I like this"]'
-            likes_element = await page.query_selector(like_button_selector)
+        print(f"Total number of comments: {comment_count}")
 
-            if likes_element:
-                aria_label = await likes_element.get_attribute('aria-label')
-                likes = re.search(r'(\d[\d,]*)', aria_label).group(1) if aria_label else "0"
-            else:
-                likes = "0"
+        comments = await extract_comments(video_id)
+        beautified_comments = [{"author": comment['author'], "text": re.sub(r'<.*?>', '', comment['text'])} for comment in comments]
 
-            # Extract Heatmap SVG
-            heatmap_svg = await extract_heatmap_svgs(page)
+        # Apply sentiment analysis to each comment and determine overall sentiment
+        overall_sentiment = analyze_comments_sentiment(beautified_comments, comment_count)
 
-            # Ensure unique description and links to avoid repetition
-            description_elements = tree.xpath('//ytd-text-inline-expander[@id="description-inline-expander"]//yt-attributed-string[@user-input=""]//span[@class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap"]')
-            description_parts = []
-            links = set()
+        # Assuming `views`, `likes`, and `comment_count` are already converted to integers
+        comment_to_view_ratio = comment_count / views * 100 if views else 0
+        like_to_views_ratio = likes / views * 100 if views else 0
+        like_to_comment_ratio = likes / comment_count * 100 if likes else 0
 
-            for element in description_elements:
-                text_content = element.text_content().strip()
-                if text_content and text_content not in description_parts:
-                    description_parts.append(text_content)
-                for link in element.xpath('.//a'):
-                    link_text = link.text_content().strip()
-                    link_href = link.get('href')
-                    if link_text and link_href and link_href not in links:
-                        if link_href.startswith('https://www.youtube.com/redirect'):
-                            link_href = convert_yt_redirect_to_normal_link(link_href)
-                        elif link_href.startswith('/watch?'):
-                            link_href = convert_yt_watch_to_full_link(link_href)
-                        elif link_href.startswith('/hashtag/'):
-                            link_text = convert_hashtag_to_link(link_text)
-                            link_href = f"https://www.youtube.com{link_href}"
-                        description_parts.append(f"[{link_text}]({link_href})")
-                        links.add(link_href)
+        logging.info(f"Creating Output Markdown for video ID: {video_id}")
 
-            description = ' '.join(description_parts)
+        # Analyze Thumbnail
+        dominant_color, palette, thumbnail_text = analyze_thumbnail(video_id)
 
-            # Extract Duration
-            duration_element = tree.xpath('//span[@class="ytp-time-duration"]')
-            duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
-
-            comments = await extract_comments(video_id)
-            beautified_comments = [{"author": comment['author'], "text": re.sub(r'<.*?>', '', comment['text'])} for comment in comments]
-
-            # Create Markdown content
-            markdown_content = f"""# {title}
+        # Create Markdown content
+        markdown_content = f"""# {title}
 
 ## Video Statistics
 
 - **Video ID:** {video_id}
+
 - **Title:** {title}
+
 - **Views:** {views}  
+
 - **Publish Time:** {publish_time}  
+
 - **Tags:** {', '.join(tags)}  
+
 - **Likes:** {likes}  
+
 - **Duration:** {duration}  
+
 - **Description:** {description}  
 
+## Overall Sentiment
+
+- **Overall Sentiment:** {overall_sentiment}
+
+## Thumbnail Analysis
+
+- **Dominant Color:** {dominant_color}
+- **Palette Colors:** {palette}
+- **Thumbnail Text:** {thumbnail_text}
+
+## Ratios
+
+- **Comment to View Ratio:** {comment_to_view_ratio:.2f}%
+- **Views to Like Ratio:** {like_to_views_ratio:.2f}%
+- **Comment to Like Ratio:** {like_to_comment_ratio:.2f}%
+
 ## Links
-{','.join(links)}
+
+{', '.join(links)}
 
 ## Heatmap SVG
-![Heatmap]({heatmap_svg})
+```svg
+{heatmap_svg}
 
 ## Comments
 
-- **Total No of Comments:** {len(beautified_comments)}
+- **Total No of Comments:** {comment_count}
 
 | Author               | Comment                                                                 |
 |----------------------|-------------------------------------------------------------------------|
+
 """
-            for comment in beautified_comments:
-                markdown_content += f"| {comment['author']} | {comment['text']} |\n"
+        
+        for comment in beautified_comments:
+            markdown_content += f"| {comment['author']} | {comment['text']} |\n"
 
-            # Write content to a markdown file
-            markdown_file_name = f"{title}_data.md"
-            with open(markdown_file_name, 'w', encoding='utf-8') as md_file:
-                md_file.write(markdown_content)
-
-            logging.info("Extraction and Markdown file creation completed successfully.")
-            return markdown_file_name
-
-        except PlaywrightTimeoutError:
-            logging.error(f"Failed to extract data for video ID: {video_id}")
-            return None
-
-        finally:
-            await context.close()
-            await browser.close()
+        return markdown_content
 
 async def extract_heatmap_svgs(page):
-    await page.wait_for_load_state('networkidle')
+    # Wait for the network to be idle to ensure all resources have loaded
+    try:
+        await page.wait_for_load_state('networkidle')
+        logging.info("Network idle state reached")
+    except Exception as e:
+        return f"Timeout waiting for network idle: {e}"
+
+    # Wait for the heatmap container to be visible
+    try:
+        await page.wait_for_selector('div.ytp-heat-map-container', state='hidden', timeout=10000)
+    except Exception as e:
+        return f"Timeout waiting for heatmap container: {e}"
+
     heatmap_container = await page.query_selector('div.ytp-heat-map-container')
     if heatmap_container:
         heatmap_container_html = await heatmap_container.inner_html()
-        # Use lxml to parse the heatmap SVG
-        tree = etree.HTML(heatmap_container_html)
-        svg_element = tree.xpath('//svg')
-        if svg_element:
-            return etree.tostring(svg_element[0]).decode()
-    return "No heatmap SVG found"
+    else:
+        return "Heatmap container not found"
 
-async def extract_comments(video_id):
+    # Parse the HTML content
+    tree = html.fromstring(heatmap_container_html)
+
+    # Find all SVG elements within the heatmap container
+    heatmap_elements = tree.xpath('//svg')
+
+    if not heatmap_elements:
+        return "Heatmap SVG not found"
+
+    # Calculate the total width and height of the combined SVG
+    total_width = sum(get_pixel_value(elem.attrib['width']) for elem in heatmap_elements)
+    total_height = max(get_pixel_value(elem.attrib['height']) for elem in heatmap_elements)
+
+    # Create a new SVG element to hold the combined SVGs
+    combined_svg = etree.Element('svg', {
+        'xmlns': 'http://www.w3.org/2000/svg',
+        'width': f'{total_width}px',
+        'height': f'{total_height}px',
+        'viewBox': f'0 0 {total_width} {total_height}'
+    })
+
+    # Position each SVG element horizontally
+    current_x = 0
+    for elem in heatmap_elements:
+        # Get the width and height of the current SVG
+        width = get_pixel_value(elem.attrib['width'])
+        height = get_pixel_value(elem.attrib['height'])
+
+        # Create a new group element to hold the current SVG and position it
+        group = etree.SubElement(combined_svg, 'g', {
+            'transform': f'translate({current_x}, 0)'
+        })
+
+        # Copy the current SVG's children to the new group
+        for child in elem.getchildren():
+            group.append(child)
+
+        # Move the x position for the next SVG
+        current_x += width
+
+    # Convert the combined SVG to a string
+    combined_svg_str = etree.tostring(combined_svg, pretty_print=True).decode('utf-8')
+
+    return combined_svg_str
+
+# Helper function to get pixel value
+def get_pixel_value(value):
+    if 'px' in value:
+        return int(value.replace('px', ''))
+    elif '%' in value:
+        # Assuming the parent container's width is 1000px for simplicity
+        return int(float(value.replace('%', '')) * 10)
+    else:
+        raise ValueError(f"Unsupported width/height format: {value}")
+
+async def extract_comments(video_id, limit=20):
     downloader = YoutubeCommentDownloader()
-    comments = downloader.get_comments(video_id, sort_by=SORT_BY_RECENT)
-    return comments
+    comments = downloader.get_comments_from_url(f'https://www.youtube.com/watch?v={video_id}', sort_by=SORT_BY_RECENT)
+    return list(islice(comments, limit))
 
-def create_zip_file(file_names, output_zip_name):
-    with zipfile.ZipFile(output_zip_name, 'w') as zip_file:
-        for file_name in file_names:
-            zip_file.write(file_name, os.path.basename(file_name))
+def beautify_output(input_text):
+    # Remove leading and trailing whitespace
+    input_text = input_text.strip()
+    
+    # Split the input text into sections
+    sections = re.split(r'\n\s*\n', input_text)
+    
+    # Initialize the Markdown output
+    markdown_output = []
+    
+    # Process each section
+    for section in sections:
+        # Remove leading and trailing whitespace from each section
+        section = section.strip()
+        
+        # Check if the section is a title
+        if section.startswith('#'):
+            markdown_output.append(section)
+            continue
+        
+        # Check if the section is a description
+        if section.startswith('**Description:**'):
+            markdown_output.append('## Description')
+            description_lines = section.split('\n')[1:]
+            for line in description_lines:
+                markdown_output.append(f"- {line.strip()}")
+            continue
+        
+        # Check if the section is a list of links
+        if section.startswith('## Links'):
+            markdown_output.append('## Links')
+            links = section.split('\n')[1:]
+            for link in links:
+                markdown_output.append(f"- {link.strip()}")
+            continue
+        
+        # Check if the section is a heatmap SVG
+        if section.startswith('## Heatmap SVG'):
+            markdown_output.append('## Heatmap SVG')
+            svg_content = section.split('\n', 1)[1]
+            markdown_output.append(f"```svg\n{svg_content}\n```")
+            continue
+        
+        # Check if the section is a list of comments
+        if section.startswith('## Comments'):
+            markdown_output.append('## Comments')
+            comments = eval(section.split('\n', 1)[1])
+            for comment in comments:
+                markdown_output.append(f"### {comment['author']}")
+                markdown_output.append(f"{comment['text']}")
+            continue
+        
+        # If the section is a list of details
+        if section.startswith('**'):
+            markdown_output.append('## Video Details')
+            details = section.split('\n')
+            for detail in details:
+                markdown_output.append(f"- {detail.strip()}")
+            continue
+    
+    # Join the Markdown output into a single string
+    return '\n'.join(markdown_output)
 
-def upload_to_tempcloud(file_path):
-    # Replace with your TempCloud API URL and authentication details
-    tempcloud_api_url = "https://api.tempcloud.io/upload"
-    with open(file_path, 'rb') as file:
-        response = requests.post(tempcloud_api_url, files={'file': file})
-        if response.status_code == 200:
-            return response.json()['url']  # Assuming the response contains a URL to the uploaded file
-        else:
-            logging.error(f"Failed to upload to TempCloud: {response.status_code} - {response.text}")
-            return None
+# Streamlit App
+st.title("YouTube Video Data Extractor")
 
-def main():
-    st.title("YouTube Data Extractor")
-    video_id = st.text_input("Enter YouTube Video ID:", "")
-    start_button = st.button("Extract Data")
+video_id = st.text_input("Enter the YouTube video ID:")
 
-    if start_button and video_id:
-        st.write("Extracting data, please wait...")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        # Extract video data asynchronously
-        file_name = loop.run_until_complete(extract_video_data(video_id))
-
-        if file_name:
-            zip_file_name = f"{video_id}_data.zip"
-            create_zip_file([file_name], zip_file_name)
-            st.success(f"Data extracted successfully! Files are saved to {zip_file_name}")
-
-            # Upload files to TempCloud and get URLs
-            uploaded_urls = []
-            for file in [file_name, zip_file_name]:
-                uploaded_url = upload_to_tempcloud(file)
-                if uploaded_url:
-                    uploaded_urls.append(uploaded_url)
-
-            # Provide download links to the user
-            st.write("Download your files:")
-            for url in uploaded_urls:
-                st.markdown(f"[Download here]({url})")
-        else:
-            st.error("Failed to extract video data.")
+if st.button("Extract Data"):
+    with st.spinner("Extracting video data..."):
+        markdown_content = asyncio.run(extract_video_data(video_id))
+        st.markdown(markdown_content)
 
 if __name__ == "__main__":
-    main()
+    st.set_option('deprecation.showfileUploaderEncoding', False)
+    st.set_page_config(page_title="YouTube Video Data Extractor", page_icon="🎥")
