@@ -479,5 +479,4 @@ if st.button("Extract Data"):
         st.write(markdown_content)
 
 if __name__ == "__main__":
-    st.set_option('deprecation.showfileUploaderEncoding', False)
-    st.set_page_config(page_title="YouTube Video Data Extractor", page_icon="🎥")
+     st.set_page_config(page_title="YouTube Video Data Extractor", page_icon="🎥")
