@@ -3,7 +3,7 @@ psutil
 streamlit
 lxml
 pytesseract
-
+colorthief
 playwright
 playwright-stealth
 lxml-html-clean
