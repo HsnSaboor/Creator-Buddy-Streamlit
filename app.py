@@ -122,7 +122,19 @@ async def fetch_video_details(video_id):
         description = " ".join(element.text_content().strip() for element in tree.xpath('//yt-formatted-string[@id="description"]//span'))
         
         await browser.close()
-        return title, int(views.replace(",", "")), publish_time, tags, int(likes.replace(",", "")), description
+        
+        # Ensure views and likes are properly formatted before converting to integers
+        try:
+            views = int(views.replace(",", ""))
+        except ValueError:
+            views = 0
+        
+        try:
+            likes = int(likes.replace(",", ""))
+        except ValueError:
+            likes = 0
+        
+        return title, views, publish_time, tags, likes, description
 
 # Analyze comments
 def analyze_comments(video_id):
