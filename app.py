@@ -57,11 +57,7 @@ def analyze_thumbnail(video_id):
         st.write("**Color Palette:**")
         cols = st.columns(6)
         for idx, color in enumerate(palette):
-            # Ensure color is a valid RGB tuple
-            if isinstance(color, tuple) and len(color) == 3:
-                cols[idx].color_picker("", color=f"rgb{color}", disabled=True)
-            else:
-                st.error(f"Invalid color format: {color}")
+            cols[idx].color_picker("", color=color, disabled=True)
 
     # Text extraction from thumbnail
     text = pytesseract.image_to_string(thumbnail_img)
@@ -126,19 +122,7 @@ async def fetch_video_details(video_id):
         description = " ".join(element.text_content().strip() for element in tree.xpath('//yt-formatted-string[@id="description"]//span'))
         
         await browser.close()
-        
-        # Ensure views and likes are properly formatted before converting to integers
-        try:
-            views = int(views.replace(",", ""))
-        except ValueError:
-            views = 0
-        
-        try:
-            likes = int(likes.replace(",", ""))
-        except ValueError:
-            likes = 0
-        
-        return title, views, publish_time, tags, likes, description
+        return title, int(views.replace(",", "")), publish_time, tags, int(likes.replace(",", "")), description
 
 # Analyze comments
 def analyze_comments(video_id):
