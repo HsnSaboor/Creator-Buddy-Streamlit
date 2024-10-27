@@ -3,6 +3,7 @@ youtube-comment-downloader
 psutil
 streamlit
 lxml
+seaborn
 matplotlib
 pytesseract
 colorthief
