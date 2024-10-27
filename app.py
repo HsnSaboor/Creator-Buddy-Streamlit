@@ -57,7 +57,11 @@ def analyze_thumbnail(video_id):
         st.write("**Color Palette:**")
         cols = st.columns(6)
         for idx, color in enumerate(palette):
-            cols[idx].color_picker("", color=color, disabled=True)
+            # Ensure color is a valid RGB tuple
+            if isinstance(color, tuple) and len(color) == 3:
+                cols[idx].color_picker("", color=f"rgb{color}", disabled=True)
+            else:
+                st.error(f"Invalid color format: {color}")
 
     # Text extraction from thumbnail
     text = pytesseract.image_to_string(thumbnail_img)
