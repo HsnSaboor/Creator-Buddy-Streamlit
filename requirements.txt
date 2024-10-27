@@ -1,3 +1,4 @@
+textblob
 youtube-comment-downloader
 psutil
 streamlit
