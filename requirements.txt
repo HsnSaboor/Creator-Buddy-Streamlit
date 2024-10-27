@@ -3,6 +3,7 @@ youtube-comment-downloader
 psutil
 streamlit
 lxml
+matplotlib
 pytesseract
 colorthief
 playwright
