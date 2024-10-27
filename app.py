@@ -16,6 +16,7 @@ from PIL import Image
 import pytesseract
 from colorthief import ColorThief
 from io import BytesIO
+import base64
 
 # Install Playwright using os.system (this should only be done once)
 os.system("pip install playwright")
@@ -72,7 +73,7 @@ def analyze_thumbnail(video_id):
     # Extract text from thumbnail using Tesseract OCR
     thumbnail_text = pytesseract.image_to_string(thumbnail_image)
 
-    return dominant_color, palette, thumbnail_text.strip()
+    return dominant_color, palette, thumbnail_text.strip(), thumbnail_image
 
 # Calculate sentiment for each comment
 def get_comment_sentiment(comment_text):
@@ -227,7 +228,7 @@ async def extract_video_data(video_id):
         logging.info(f"Creating Output Markdown for video ID: {video_id}")
 
         # Analyze Thumbnail
-        dominant_color, palette, thumbnail_text = analyze_thumbnail(video_id)
+        dominant_color, palette, thumbnail_text, thumbnail_image = analyze_thumbnail(video_id)
 
         # Create Markdown content
         markdown_content = f"""# {title}
@@ -286,7 +287,7 @@ async def extract_video_data(video_id):
         for comment in beautified_comments:
             markdown_content += f"| {comment['author']} | {comment['text']} |\n"
 
-        return markdown_content
+        return markdown_content, dominant_color, palette, thumbnail_image, comment_to_view_ratio, like_to_views_ratio, like_to_comment_ratio
 
 async def extract_heatmap_svgs(page):
     # Wait for the network to be idle to ensure all resources have loaded
@@ -434,12 +435,48 @@ def beautify_output(input_text):
 # Streamlit App
 st.title("YouTube Video Data Extractor")
 
-video_id = st.text_input("Enter the YouTube video ID:")
+video_input = st.text_input("Enter the YouTube video ID or URL:")
+
+def extract_video_id(video_input):
+    if "youtube.com" in video_input:
+        parsed_url = urlparse(video_input)
+        query_params = parse_qs(parsed_url.query)
+        return query_params.get('v', [''])[0]
+    elif "youtu.be" in video_input:
+        return video_input.split("/")[-1].split("?")[0]
+    else:
+        return video_input
 
 if st.button("Extract Data"):
     with st.spinner("Extracting video data..."):
-        markdown_content = asyncio.run(extract_video_data(video_id))
-        st.markdown(markdown_content)
+        video_id = extract_video_id(video_input)
+        markdown_content, dominant_color, palette, thumbnail_image, comment_to_view_ratio, like_to_views_ratio, like_to_comment_ratio = asyncio.run(extract_video_data(video_id))
+        
+        # Display Thumbnail
+        st.image(thumbnail_image, caption="Thumbnail", use_column_width=True)
+        
+        # Display Thumbnail Analysis
+        st.subheader("Thumbnail Analysis")
+        st.write(f"**Dominant Color:** {dominant_color}")
+        st.write(f"**Palette Colors:** {palette}")
+        
+        # Display Colors as Swatches
+        st.write("**Color Swatches:**")
+        for color in palette:
+            st.markdown(f'<div style="background-color: rgb{color}; width: 50px; height: 50px; display: inline-block;"></div>', unsafe_allow_html=True)
+        
+        # Display Ratios as Progress Bars
+        st.subheader("Ratios")
+        st.write(f"**Comment to View Ratio:** {comment_to_view_ratio:.2f}%")
+        st.progress(comment_to_view_ratio / 100)
+        st.write(f"**Views to Like Ratio:** {like_to_views_ratio:.2f}%")
+        st.progress(like_to_views_ratio / 100)
+        st.write(f"**Comment to Like Ratio:** {like_to_comment_ratio:.2f}%")
+        st.progress(like_to_comment_ratio / 100)
+        
+        # Display Heatmap SVG
+        st.subheader("Heatmap SVG")
+        st.write(markdown_content)
 
 if __name__ == "__main__":
     st.set_option('deprecation.showfileUploaderEncoding', False)
