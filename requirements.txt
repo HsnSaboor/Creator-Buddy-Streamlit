@@ -2,6 +2,8 @@ youtube-comment-downloader
 psutil
 streamlit
 lxml
+pytesseract
+
 playwright
 playwright-stealth
 lxml-html-clean
