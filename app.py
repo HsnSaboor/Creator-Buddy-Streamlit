@@ -474,14 +474,14 @@ if __name__ == "__main__":
 if st.button("Analyze Video"):
 
     with st.spinner("Extracting data..."):
-        start_time = datetime.now()
-        st.write(f"Extracting data for video ID @ start_time: {datetime.now()}")
+        start_time = datetime.datetime.now()
+        st.write(f"Extracting data for video ID @ start_time: {datetime.datetime.now()}")
 
         try:
             asyncio.run(extract_video_data(video_id))
             # Load the extracted data from the saved Markdown file
-            end_time = datetime.now()
-            st.write(f"Finished extracting data for video ID @ end_time: {datetime.now()}")
+            end_time = datetime.datetime.now()
+            st.write(f"Finished extracting data for video ID @ end_time: {datetime.datetime.now()}")
 
             with open(f"{video_id}_data.md", "r") as f:
                 markdown_content = f.read()
