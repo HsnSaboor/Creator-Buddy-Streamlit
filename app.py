@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
@@ -471,13 +472,20 @@ if __name__ == "__main__":
     video_id = st.text_input("Enter YouTube Video ID:")
 
 if st.button("Analyze Video"):
+
     with st.spinner("Extracting data..."):
+        start_time = datetime.now()
+        st.write(f"Extracting data for video ID @ start_time: {datetime.now()}")
+
         try:
             asyncio.run(extract_video_data(video_id))
             # Load the extracted data from the saved Markdown file
+            end_time = datetime.now()
+            st.write(f"Finished extracting data for video ID @ end_time: {datetime.now()}")
+
             with open(f"{video_id}_data.md", "r") as f:
                 markdown_content = f.read()
-
+            st.write(f"total time taken: {end_time - start_time}")
             # Display the Markdown content using Streamlit
             st.markdown(markdown_content)
 
