@@ -1,11 +1,10 @@
-import streamlit as st
 import asyncio
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
 import random
 import re
-import os
+import streamlit as st
 import logging
 import pandas as pd
 from itertools import islice
@@ -17,10 +16,6 @@ import pytesseract
 from colorthief import ColorThief
 from io import BytesIO
 import math
-
-os.system("pip install playwright")
-os.system("playwright install")
-logging.info("Playwright installed successfully.")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -469,19 +464,29 @@ def beautify_output(input_text):
     # Join the Markdown output into a single string
     return '\n'.join(markdown_output)
 
-def main():
-    st.title("YouTube Video Data Extractor")
-    video_id = st.text_input("Enter the YouTube video ID:")
-    if st.button("Extract Data"):
-        with st.spinner("Extracting data..."):
-            markdown_content = asyncio.run(extract_video_data(video_id))
+if __name__ == "__main__":
+    st.title("YouTube Video Analyzer")
+
+# User input for video ID
+    video_id = st.text_input("Enter YouTube Video ID:")
+
+if st.button("Analyze Video"):
+    with st.spinner("Extracting data..."):
+        try:
+            asyncio.run(extract_video_data(video_id))
+            # Load the extracted data from the saved Markdown file
+            with open(f"{video_id}_data.md", "r") as f:
+                markdown_content = f.read()
+
+            # Display the Markdown content using Streamlit
             st.markdown(markdown_content)
+
+            # Create a download button for the Markdown file
             st.download_button(
-                label="Download Markdown File",
+                label="Download Report",
                 data=markdown_content,
-                file_name=f"{video_id}_data.md",
+                file_name=f"{video_id}_report.md",
                 mime="text/markdown"
             )
-
-if __name__ == "__main__":
-    main()
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
