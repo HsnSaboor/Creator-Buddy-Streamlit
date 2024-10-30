@@ -472,22 +472,22 @@ if __name__ == "__main__":
     video_id = st.text_input("Enter YouTube Video ID:")
 
 if st.button("Analyze Video"):
+    start_time = datetime.time.time()  # Capture start time
 
     with st.spinner("Extracting data..."):
-        start_time = datetime.datetime.now()
-        st.write(f"Extracting data for video ID @ start_time: {start_time}")
-
         try:
             asyncio.run(extract_video_data(video_id))
             # Load the extracted data from the saved Markdown file
-            end_time = datetime.datetime.now()
-            st.write(f"Finished extracting data for video ID @ {end_time}")
-
             with open(f"{video_id}_data.md", "r") as f:
                 markdown_content = f.read()
-            st.write(f"total time taken: {end_time - start_time}")
             # Display the Markdown content using Streamlit
             st.markdown(markdown_content)
+
+            # Calculate and display execution time
+            end_time = datetime.time.time()
+            execution_time = end_time - start_time
+            logging.info(f"Video analysis for '{video_id}' completed in {execution_time:.2f} seconds")
+            st.success(f"Analysis complete! Execution time: {execution_time:.2f} seconds")
 
             # Create a download button for the Markdown file
             st.download_button(
