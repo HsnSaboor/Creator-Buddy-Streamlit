@@ -472,7 +472,7 @@ if __name__ == "__main__":
     video_id = st.text_input("Enter YouTube Video ID:")
 
 if st.button("Analyze Video"):
-    start_time = datetime.time.time()  # Capture start time
+    start_time = datetime.datetime.time()  # Capture start time
 
     with st.spinner("Extracting data..."):
         try:
@@ -484,7 +484,7 @@ if st.button("Analyze Video"):
             st.markdown(markdown_content)
 
             # Calculate and display execution time
-            end_time = datetime.time.time()
+            end_time = datetime.datetime.time()
             execution_time = end_time - start_time
             logging.info(f"Video analysis for '{video_id}' completed in {execution_time:.2f} seconds")
             st.success(f"Analysis complete! Execution time: {execution_time:.2f} seconds")
