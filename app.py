@@ -1,9 +1,9 @@
+import streamlit as st
 import asyncio
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
 import random
-import streamlit as st
 import re
 import os
 import logging
@@ -21,6 +21,9 @@ import math
 os.system("pip install playwright")
 os.system("playwright install")
 logging.info("Playwright installed successfully.")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Predefined user agents, resolutions, and browser configurations
 USER_AGENTS = [
@@ -479,3 +482,4 @@ def main():
                 file_name=f"{video_id}_data.md",
                 mime="text/markdown"
             )
+
