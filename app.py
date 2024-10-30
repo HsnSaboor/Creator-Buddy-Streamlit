@@ -479,6 +479,3 @@ def main():
                 file_name=f"{video_id}_data.md",
                 mime="text/markdown"
             )
-
-if __name__ == "__main__":
-    main()
