@@ -1,22 +1,31 @@
 import asyncio
-import datetime
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
 import random
 import re
-import streamlit as st
 import logging
 import pandas as pd
 from itertools import islice
+import xml.etree.ElementTree as ET
 from textblob import TextBlob
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
 import requests
 from PIL import Image
 import pytesseract
+from groq import Groq
 from colorthief import ColorThief
+import json
 from io import BytesIO
 import math
+from typing import List, Dict
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+
+client = Groq(
+
+    api_key='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'
+
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -40,6 +49,157 @@ RESOLUTIONS = [
 
 BROWSERS = ["chromium"]
 
+def extract_topics(text):
+    system_message = """
+    You are a topic extraction model. Your task is to extract the main and niche topics from the given text.
+    The main topic should be a broad category that encompasses the overall content of the text.
+    The niche topic should be a more specific sub-category within the main topic.
+    If two videos are in the same niche, they should have the same main and niche topics.
+    The third topic can be different, as long as it still falls within the same niche.
+    Return the main and niche topics as a JSON object with the following structure:
+    {
+        "main_topic": "main topic",
+        "niche_topic": "niche topic",
+        "third_topic": "third topic"
+    }
+    Example:
+    Input: "Text: The video discusses the latest advancements in quantum computing and its applications in cryptography."
+    Output: {"main_topic": "Technology", "niche_topic": "Quantum Computing", "third_topic": "Cryptography"}
+    """
+    user_message = f"Text: {text}"
+
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ],
+        model="llama3-8b-8192",
+        temperature=0.5,
+        max_tokens=1024,
+        top_p=1,
+        stop=None,
+        stream=False,
+        response_format={"type": "json_object"}
+    )
+
+    return json.loads(chat_completion.choices[0].message.content)
+
+def parse_svg_heatmap(heatmap_svg, video_duration_seconds, svg_width=1000, svg_height=1000):
+    if not heatmap_svg or heatmap_svg.strip() == "":
+        logging.error("SVG heatmap content is empty or None")
+        return []
+
+    try:
+        tree = ET.ElementTree(ET.fromstring(heatmap_svg))
+        root = tree.getroot()
+    except ET.ParseError as e:
+        logging.error(f"Failed to parse SVG heatmap: {e}")
+        logging.error(f"SVG content: {heatmap_svg}")
+        return []
+
+    heatmap_points = []
+
+    for g in root.findall('.//{http://www.w3.org/2000/svg}g'):
+        for defs in g.findall('.//{http://www.w3.org/2000/svg}defs'):
+            for path in defs.findall('.//{http://www.w3.org/2000/svg}path'):
+                d_attr = path.attrib.get('d', '')
+
+                coordinates = re.findall(r'[MC]([^MC]+)', d_attr)
+
+                for segment in coordinates:
+                    points = segment.strip().replace(',', ' ').split()
+                    for i in range(0, len(points), 2):
+                        x = float(points[i])
+                        y = float(points[i + 1])
+
+                        duration_seconds = (x / svg_width) * video_duration_seconds
+                        attention = 100 - (y / svg_height) * 100
+
+                        heatmap_points.append({'Attention': attention, 'duration': duration_seconds})
+
+    return heatmap_points
+
+def analyze_heatmap_data(heatmap_points: List[Dict[str, float]], threshold: float = 2.25) -> Dict[str, any]:
+    if not heatmap_points or not all(isinstance(point, dict) and 'Attention' in point and 'duration' in point for point in heatmap_points):
+        return {}
+
+    total_attention = sum(point['Attention'] for point in heatmap_points)
+    average_attention = total_attention / len(heatmap_points)
+
+    significant_rises = []
+    significant_falls = []
+    rise_start = None
+    fall_start = None
+
+    for i, point in enumerate(heatmap_points):
+        attention = point['Attention']
+        duration = point['duration']
+
+        if attention > average_attention + threshold:
+            if rise_start is None:
+                rise_start = duration
+            if i == len(heatmap_points) - 1 or heatmap_points[i + 1]['Attention'] <= average_attention + threshold:
+                significant_rises.append({'start': rise_start, 'end': duration})
+                rise_start = None
+
+        if attention < average_attention - threshold:
+            if fall_start is None:
+                fall_start = duration
+            if i == len(heatmap_points) - 1 or heatmap_points[i + 1]['Attention'] >= average_attention - threshold:
+                significant_falls.append({'start': fall_start, 'end': duration})
+                fall_start = None
+
+    return {
+        'average_attention': average_attention,
+        'significant_rises': significant_rises,
+        'significant_falls': significant_falls,
+        'total_rises': len(significant_rises),
+        'total_falls': len(significant_falls)
+    }
+
+def fetch_transcript(video_id: str):
+    try:
+        return YouTubeTranscriptApi.get_transcript(video_id)
+    except TranscriptsDisabled:
+        print("Transcripts are disabled for this video.")
+        return None
+    except Exception as e:
+        print(f"Error fetching default transcript: {e}")
+
+        try:
+            available_transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+            if 'en' in available_transcripts:
+                return available_transcripts.find_transcript(['en']).fetch()
+            else:
+                first_transcript = next(available_transcripts).fetch()
+                print("No English transcript found, using the first available.")
+                return first_transcript
+        except Exception as fallback_error:
+            print(f"Error fetching alternative transcripts: {fallback_error}")
+            return None
+
+def get_significant_transcript_sections(transcript: List[Dict[str, any]], analysis_data: Dict[str, any]):
+    significant_sections = {'rises': [], 'falls': []}
+
+    for rise in analysis_data['significant_rises']:
+        rise_transcript = [entry for entry in transcript if rise['start'] <= entry['start'] <= rise['end']]
+        significant_sections['rises'].append(rise_transcript)
+
+    for fall in analysis_data['significant_falls']:
+        fall_transcript = [entry for entry in transcript if fall['start'] <= entry['start'] <= fall['end']]
+        significant_sections['falls'].append(fall_transcript)
+
+    return significant_sections
+
+def duration_to_seconds(duration):
+    parts = duration.split(':')
+    if len(parts) == 2:  # MM:SS
+        minutes, seconds = map(int, parts)
+        return minutes * 60 + seconds
+    elif len(parts) == 3:  # HH:MM:SS
+        hours, minutes, seconds = map(int, parts)
+        return hours * 3600 + minutes * 60 + seconds
+
 def convert_yt_redirect_to_normal_link(redirect_url):
     parsed_url = urlparse(redirect_url)
     query_params = parse_qs(parsed_url.query)
@@ -54,53 +214,23 @@ def convert_yt_watch_to_full_link(watch_url):
 def convert_hashtag_to_link(hashtag):
     return f"[{hashtag}](https://www.youtube.com/hashtag/{hashtag[1:]})"
 
-def get_luminance(color):
-    # Calculate luminance for the given color (RGB values in the range 0-255)
-    r, g, b = [channel / 255.0 for channel in color]
-    r = r / 12.92 if r <= 0.03928 else ((r + 0.055) / 1.055) ** 2.4
-    g = g / 12.92 if g <= 0.03928 else ((g + 0.055) / 1.055) ** 2.4
-    b = b / 12.92 if b <= 0.03928 else ((b + 0.055) / 1.055) ** 2.4
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-def contrast_score(color1, color2):
-    # Calculate the contrast ratio between two colors
-    luminance1 = get_luminance(color1)
-    luminance2 = get_luminance(color2)
-    contrast_ratio = (luminance1 + 0.05) / (luminance2 + 0.05) if luminance1 > luminance2 else (luminance2 + 0.05) / (luminance1 + 0.05)
-    # Scale contrast ratio (1 to 21) to a score out of 10
-    score = min(10, (contrast_ratio - 1) * (10 / 20))
-    return round(score, 1)  # Return score rounded to 1 decimal place
-
-# Assuming analyze_thumbnail is defined as shown before
 def analyze_thumbnail(video_id):
-    # Download and save thumbnail
     thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
     thumbnail_response = requests.get(thumbnail_url)
     thumbnail_image = Image.open(BytesIO(thumbnail_response.content))
 
-    # Analyze thumbnail colors using ColorThief
     color_thief = ColorThief(BytesIO(thumbnail_response.content))
     dominant_color = color_thief.get_color(quality=1)
     palette = color_thief.get_palette(color_count=6)
 
-    # Calculate contrast score between dominant color and each color in the palette
-    contrast_scores = [contrast_score(dominant_color, color) for color in palette]
-
-    # Average the contrast scores to get an overall score
-    averagecontrast = round(sum(contrast_scores) / len(contrast_scores), 1)
-
-    # Extract text from thumbnail using Tesseract OCR
     thumbnail_text = pytesseract.image_to_string(thumbnail_image)
 
-    # Return average_contrast_score so it's accessible when the function is called
-    return dominant_color, palette, averagecontrast, thumbnail_text.strip()
+    return dominant_color, palette, thumbnail_text.strip()
 
-# Calculate sentiment for each comment
 def get_comment_sentiment(comment_text):
     analysis = TextBlob(comment_text)
     return "Positive" if analysis.sentiment.polarity > 0 else "Negative"
 
-# Apply sentiment analysis to each comment and determine overall sentiment
 def analyze_comments_sentiment(beautified_comments, comment_count):
     positive_comments = sum(1 for comment in beautified_comments if get_comment_sentiment(comment['text']) == "Positive")
     overall_sentiment = "Positive" if positive_comments > (comment_count / 2) else "Negative"
@@ -124,16 +254,12 @@ async def extract_video_data(video_id):
             bypass_csp=True
         )
 
-        # Block unnecessary resources
         await context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["video", "audio", "font"] else route.continue_())
 
         page = await context.new_page()
 
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
-
-
-        logging.info(f"Starting Extraction Process for video ID: {video_id}")
 
         if "m.youtube.com" in page.url:
             await page.goto(video_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
@@ -145,13 +271,11 @@ async def extract_video_data(video_id):
             expand_button = await page.query_selector(expand_selector)
             if expand_button:
                 await expand_button.click()
-                print(f"Successfully clicked the button with selector: {expand_selector}")
         except PlaywrightTimeoutError:
             logging.warning("Expand button not found.")
 
-        # Scroll to the bottom to load comments
         await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-        await page.wait_for_timeout(8000)  # Wait to ensure comments load
+        await page.wait_for_timeout(8000)
 
         content = await page.content()
         tree = html.fromstring(content)
@@ -159,13 +283,9 @@ async def extract_video_data(video_id):
         for elem in tree.xpath('//head | //style | //script'):
             elem.getparent().remove(elem)
 
-        # Extract Title
         title_element = tree.xpath('//h1[@class="style-scope ytd-watch-metadata"]/yt-formatted-string')
         title = title_element[0].text_content().strip() if title_element else "Title not found"
 
-
-
-        # Extract Views, Publish Time, and Tags
         info_element = tree.xpath('//yt-formatted-string[@id="info"]')
         if info_element:
             info_text = info_element[0].text_content().strip()
@@ -174,11 +294,9 @@ async def extract_video_data(video_id):
         else:
             views, publish_time, tags = "Views not found", "Publish time not found", []
 
-        # Convert views to integer
         if views != "Views not found":
-            views = int(re.sub(r'\D', '', views))  # Remove non-digit characters and convert to int
+            views = int(re.sub(r'\D', '', views))
 
-        # Extract Likes
         like_button_selector = '//button[contains(@class, "yt-spec-button-shape-next") and @title="I like this"]'
         likes_element = await page.query_selector(like_button_selector)
         likes = "Likes not found"
@@ -187,41 +305,42 @@ async def extract_video_data(video_id):
             if aria_label:
                 match = re.search(r'(\d[\d,]*)', aria_label)
                 if match:
-                    likes = int(match.group(1).replace(',', ''))  # Remove commas and convert to int
+                    likes = int(match.group(1).replace(',', ''))
 
-        # Extract Heatmap SVG
         heatmap_svg = await extract_heatmap_svgs(page)
 
-        # Extract Description and Links
+        duration_element = tree.xpath('//span[@class="ytp-time-duration"]')
+        duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
+        duration_to_seconds_value = duration_to_seconds(duration)
+
+        heatmap_points = parse_svg_heatmap(heatmap_svg, duration_to_seconds_value)
+
+        heatmap_analysis = analyze_heatmap_data(heatmap_points)
+
         description_elements = tree.xpath('//ytd-text-inline-expander[@id="description-inline-expander"]//yt-attributed-string[@user-input=""]//span[@class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap"]')
         description_parts = []
-        links = set()  # Use a set to prevent duplicate links
+        links = set()
 
         for element in description_elements:
             text_content = element.text_content().strip()
-            if text_content and text_content not in description_parts:  # Prevent text duplication
+            if text_content and text_content not in description_parts:
                 description_parts.append(text_content)
             for link in element.xpath('.//a'):
                 link_text = link.text_content().strip()
                 link_href = link.get('href')
-                if link_text and link_href and link_href not in links:  # Prevent link duplication
+                if link_text and link_href and link_href not in links:
                     if link_href.startswith('https://www.youtube.com/redirect'):
                         link_href = convert_yt_redirect_to_normal_link(link_href)
                     elif link_href.startswith('/watch?'):
                         link_href = convert_yt_watch_to_full_link(link_href)
                     elif link_href.startswith('/hashtag/'):
-                        link_text = convert_hashtag_to_link(link_text)
+                        link_text = convert_hashtag_to_link(link_text)  # This line is incorrect, fix it
                         link_href = f"https://www.youtube.com{link_href}"
                     description_parts.append(f"[{link_text}]({link_href})")
                     links.add(link_href)
 
         description = ' '.join(description_parts)
 
-        # Extract Duration
-        duration_element = tree.xpath('//span[@class="ytp-time-duration"]')
-        duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
-
-        # Extract Comments
         comments_xpath = "//div[@id='leading-section']//h2[@id='count']//yt-formatted-string[@class='count-text style-scope ytd-comments-header-renderer']/span[1]/text()"
         comment_count_element = tree.xpath(comments_xpath)
         if comment_count_element:
@@ -240,40 +359,36 @@ async def extract_video_data(video_id):
         comments = await extract_comments(video_id)
         beautified_comments = [{"author": comment['author'], "text": re.sub(r'<.*?>', '', comment['text'])} for comment in comments]
 
-        # Apply sentiment analysis to each comment and determine overall sentiment
         overall_sentiment = analyze_comments_sentiment(beautified_comments, comment_count)
 
-        # Assuming `views`, `likes`, and `comment_count` are already converted to integers
         comment_to_view_ratio = comment_count / views * 100 if views else 0
         like_to_views_ratio = likes / views * 100 if views else 0
         comment_to_like_ratio = comment_count / likes * 100 if likes else 0
 
-
         logging.info(f"Creating Output Markdown for video ID: {video_id}")
 
-        # Analyze Thumbnail
-        dominant_color, palette, averagecontrast, thumbnail_text = analyze_thumbnail(video_id)
+        dominant_color, palette, thumbnail_text = analyze_thumbnail(video_id)
 
-        # Create Markdown content
+        transcript = fetch_transcript(video_id)
+        significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis) if transcript else {}
+
+        # Extract topics from title, description, and transcript
+        topics = extract_topics(title) + extract_topics(description) + extract_topics(transcript[:150])
+
         markdown_content = f"""# {title}
 
 ## Video Statistics
 
 - **Video ID:** {video_id}
-
 - **Title:** {title}
-
-- **Views:** {views}  
-
-- **Publish Time:** {publish_time}  
-
-- **Tags:** {', '.join(tags)}  
-
-- **Likes:** {likes}  
-
-- **Duration:** {duration}  
-
-- **Description:** {description}  
+- **Views:** {views}
+- **Publish Time:** {publish_time}
+- **Tags:** {', '.join(tags)}
+- **Likes:** {likes}
+- **Duration:** {duration}
+- **Topics:** {', '.join(topics)}
+- **Description:** {description}
+- **Duration in Seconds:** {duration_to_seconds_value}
 
 ## Overall Sentiment
 
@@ -284,7 +399,6 @@ async def extract_video_data(video_id):
 - **Dominant Color:** {dominant_color}
 - **Palette Colors:** {palette}
 - **Thumbnail Text:** {thumbnail_text}
-- **Contrast Score:** {averagecontrast}
 
 ## Ratios
 
@@ -296,9 +410,34 @@ async def extract_video_data(video_id):
 
 {', '.join(links)}
 
- ## Heatmap SVG
+## Heatmap Analysis
+
+- **Average Attention:** {heatmap_analysis['average_attention']:.2f}%
+
+- **Total Rises:** {heatmap_analysis['total_rises']}
+- **Total Falls:** {heatmap_analysis['total_falls']}
+
+- **Significant Rises:**
+  {',  '.join([f"{rise['start']}s to {rise['end']}s" for rise in heatmap_analysis['significant_rises']])}
+
+- **Significant Falls:**
+  {',  '.join([f"{fall['start']}s to {fall['end']}s" for fall in heatmap_analysis['significant_falls']])}
+
+## Significant Transcript Sections
+
+### Rises
+{"".join([f"- **{rise['start']}s to {rise['end']}s**:\n  {', '.join([entry['text'] for entry in rise_transcript])}\n" for rise, rise_transcript in zip(heatmap_analysis['significant_rises'], significant_transcript_sections['rises'])])}
+
+### Falls
+{"".join([f"- **{fall['start']}s to {fall['end']}s**:\n  {', '.join([entry['text'] for entry in fall_transcript])}\n" for fall, fall_transcript in zip(heatmap_analysis['significant_falls'], significant_transcript_sections['falls'])])}
+
+## Heatmap SVG
+
+- **Heatmap Graph Points:** {heatmap_points}
+
 ```svg
 {heatmap_svg}
+
 
 ## Comments
 
@@ -312,11 +451,10 @@ async def extract_video_data(video_id):
         for comment in beautified_comments:
             markdown_content += f"| {comment['author']} | {comment['text']} |\n"
 
-    # Save Markdown content to a file with the correct video_id
-    with open(f'{video_id}_data.md', 'w', encoding='utf-8') as md_file:  # Using f-string for correct formatting
+    with open(f'{video_id}_data.md', 'w', encoding='utf-8') as md_file:
         md_file.write(markdown_content)
 
-    logging.info("Extraction and Markdown file creation completed successfully.")
+logging.info("Extraction and Markdown file creation completed successfully.")
    
 async def extract_heatmap_svgs(page):
     # Wait for the network to be idle to ensure all resources have loaded
@@ -324,14 +462,15 @@ async def extract_heatmap_svgs(page):
         await page.wait_for_load_state('networkidle')
         logging.info("Network idle state reached")
     except Exception as e:
+        logging.error(f"Timeout waiting for network idle: {e}")
         return f"Timeout waiting for network idle: {e}"
 
-        # Wait for the heatmap container to be visible
+    # Wait for the heatmap container to be visible
     try:
-        await page.wait_for_selector('div.ytp-heat-map-container', state='hidden', timeout=10000)
+        await page.wait_for_selector('div.ytp-heat-map-container', state='hidden', timeout=20000)
     except Exception as e:
+        logging.error(f"Timeout waiting for heatmap container: {e}")
         return f"Timeout waiting for heatmap container: {e}"
-
 
     heatmap_container = await page.query_selector('div.ytp-heat-map-container')
     if heatmap_container:
@@ -339,20 +478,16 @@ async def extract_heatmap_svgs(page):
     else:
         return "Heatmap container not found"
 
-    # Parse the HTML content
     tree = html.fromstring(heatmap_container_html)
 
-    # Find all SVG elements within the heatmap container
-    heatmap_elements = tree.xpath('//svg')
+    heatmap_elements = tree.xpath('//div[@class="ytp-heat-map-chapter"]/svg')
 
     if not heatmap_elements:
         return "Heatmap SVG not found"
 
-    # Calculate the total width and height of the combined SVG
     total_width = sum(get_pixel_value(elem.attrib['width']) for elem in heatmap_elements)
     total_height = max(get_pixel_value(elem.attrib['height']) for elem in heatmap_elements)
 
-    # Create a new SVG element to hold the combined SVGs
     combined_svg = etree.Element('svg', {
         'xmlns': 'http://www.w3.org/2000/svg',
         'width': f'{total_width}px',
@@ -360,27 +495,25 @@ async def extract_heatmap_svgs(page):
         'viewBox': f'0 0 {total_width} {total_height}'
     })
 
-    # Position each SVG element horizontally
     current_x = 0
     for elem in heatmap_elements:
-        # Get the width and height of the current SVG
         width = get_pixel_value(elem.attrib['width'])
         height = get_pixel_value(elem.attrib['height'])
 
-        # Create a new group element to hold the current SVG and position it
         group = etree.SubElement(combined_svg, 'g', {
             'transform': f'translate({current_x}, 0)'
         })
 
-        # Copy the current SVG's children to the new group
         for child in elem.getchildren():
             group.append(child)
 
-        # Move the x position for the next SVG
         current_x += width
 
-    # Convert the combined SVG to a string
     combined_svg_str = etree.tostring(combined_svg, pretty_print=True).decode('utf-8')
+
+    if not combined_svg_str or combined_svg_str.strip() == "":
+        logging.error("Combined SVG heatmap content is empty or None")
+        return "Combined SVG heatmap content is empty or None"
 
     return combined_svg_str
 
@@ -464,7 +597,7 @@ def beautify_output(input_text):
     
     # Join the Markdown output into a single string
     return '\n'.join(markdown_output)
-
+    
 if __name__ == "__main__":
     st.title("YouTube Video Analyzer")
 
