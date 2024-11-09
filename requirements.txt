@@ -11,3 +11,4 @@ playwright
 playwright-stealth
 lxml-html-clean
 asyncio
+groq
