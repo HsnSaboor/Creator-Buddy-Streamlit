@@ -8,6 +8,7 @@ import logging
 import pandas as pd
 from itertools import islice
 import xml.etree.ElementTree as ET
+import datetime
 import streamlit as st
 from textblob import TextBlob
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
