@@ -371,7 +371,7 @@ async def extract_video_data(video_id):
         like_to_views_ratio = likes / views * 100 if views else 0
         comment_to_like_ratio = comment_count / likes * 100 if likes else 0
 
-        logging.info(f"Creating Output Markdown for video ID: {video_id}")
+        logging.info(f"Gettign Ai Analysis for video ID: {video_id}")
 
         dominant_color, palette, thumbnail_text = analyze_thumbnail(video_id)
 
@@ -379,9 +379,25 @@ async def extract_video_data(video_id):
         significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis) if transcript else {}
 
         # Extract topics from title, description, and transcript
-        topics = extract_topics(title) + extract_topics(description) + extract_topics(transcript[:150])
+        title_topics = extract_topics(title)
+        description_topics = extract_topics(description)
+        transcript_text = ' '.join([entry['text'] for entry in transcript[:1000]]) if transcript else ''
+        transcript_topics = extract_topics(transcript_text)
 
-        markdown_content = f"""# {title}
+        # Extract topics from title, description, and transcript
+        combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:150]])}" if transcript else f"{title}\n{description}"
+        topics = extract_topics(combined_text)
+
+        # Ensure topics is a dictionary with the expected keys
+        main_topic = topics.get('main_topic', 'N/A')
+        niche_topic = topics.get('niche_topic', 'N/A')
+        third_topic = topics.get('third_topic', 'N/A')
+
+        logging.info(f"Creating Output Markdown for video ID: {video_id}")
+
+        markdown_content = f"""
+        
+# {title}
 
 ## Video Statistics
 
@@ -392,7 +408,7 @@ async def extract_video_data(video_id):
 - **Tags:** {', '.join(tags)}
 - **Likes:** {likes}
 - **Duration:** {duration}
-- **Topics:** {', '.join(topics)}
+- **Topics:** Main: {main_topic}, Niche: {niche_topic}, Third: {third_topic}
 - **Description:** {description}
 - **Duration in Seconds:** {duration_to_seconds_value}
 
@@ -432,10 +448,10 @@ async def extract_video_data(video_id):
 ## Significant Transcript Sections
 
 ### Rises
-{"".join([f"- **{rise['start']}s to {rise['end']}s**:\n  {', '.join([entry['text'] for entry in rise_transcript])}\n" for rise, rise_transcript in zip(heatmap_analysis['significant_rises'], significant_transcript_sections['rises'])])}
+{', '.join([f"- **{rise['start']}s to {rise['end']}s**: {', '.join([entry['text'] for entry in rise_transcript])}" for rise, rise_transcript in zip(heatmap_analysis['significant_rises'], significant_transcript_sections['rises'])])}
 
 ### Falls
-{"".join([f"- **{fall['start']}s to {fall['end']}s**:\n  {', '.join([entry['text'] for entry in fall_transcript])}\n" for fall, fall_transcript in zip(heatmap_analysis['significant_falls'], significant_transcript_sections['falls'])])}
+{', '.join([f"- **{fall['start']}s to {fall['end']}s**: {', '.join([entry['text'] for entry in fall_transcript])}" for fall, fall_transcript in zip(heatmap_analysis['significant_falls'], significant_transcript_sections['falls'])])}
 
 ## Heatmap SVG
 
@@ -443,7 +459,6 @@ async def extract_video_data(video_id):
 
 ```svg
 {heatmap_svg}
-
 
 ## Comments
 
@@ -454,13 +469,13 @@ async def extract_video_data(video_id):
 
 """
         
-        for comment in beautified_comments:
-            markdown_content += f"| {comment['author']} | {comment['text']} |\n"
+    for comment in beautified_comments:
+        markdown_content += f"| {comment['author']} | {comment['text']} |\n"
 
     with open(f'{video_id}_data.md', 'w', encoding='utf-8') as md_file:
         md_file.write(markdown_content)
 
-logging.info("Extraction and Markdown file creation completed successfully.")
+    logging.info("Extraction and Markdown file creation completed successfully.")
    
 async def extract_heatmap_svgs(page):
     # Wait for the network to be idle to ensure all resources have loaded
