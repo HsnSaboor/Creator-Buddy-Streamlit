@@ -241,8 +241,26 @@ def analyze_comments_sentiment(beautified_comments, comment_count):
     overall_sentiment = "Positive" if positive_comments > (comment_count / 2) else "Negative"
     return overall_sentiment
 
-async def extract_video_data(video_id):
-    logging.info(f"Extracting video data for video ID: {video_id}")
+def normalize_youtube_url(url):
+    parsed_url = urlparse(url)
+    video_id = None
+
+    if parsed_url.netloc == 'youtu.be':
+        video_id = parsed_url.path[1:]
+    elif parsed_url.netloc in ['www.youtube.com', 'youtube.com', 'm.youtube.com']:
+        query_params = parse_qs(parsed_url.query)
+        video_id = query_params.get('v', [''])[0]
+
+    if video_id:
+        return f"https://www.youtube.com/watch?v={video_id}"
+    else:
+        raise ValueError("Invalid YouTube URL")
+
+async def extract_video_data(video_url):
+    logging.info(f"Extracting video data for video URL: {video_url}")
+    normalized_url = normalize_youtube_url(video_url)
+    video_id = parse_qs(urlparse(normalized_url).query)['v'][0]
+
     async with async_playwright() as p:
         browser_type = random.choice(BROWSERS)
         browser = await getattr(p, browser_type).launch(
@@ -263,11 +281,10 @@ async def extract_video_data(video_id):
 
         page = await context.new_page()
 
-        video_url = f"https://www.youtube.com/watch?v={video_id}"
-        await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
+        await page.goto(normalized_url, wait_until="domcontentloaded", timeout=60000)
 
         if "m.youtube.com" in page.url:
-            await page.goto(video_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
+            await page.goto(normalized_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
 
         expand_selector = 'tp-yt-paper-button#expand'
 
@@ -474,187 +491,172 @@ async def extract_video_data(video_id):
 
 - **Total No of Comments:** {comment_count}
 
-| Author               | Comment                                                                 |
-|----------------------|-------------------------------------------------------------------------|
-
+| Author               | Comment
 """
-        
         for comment in beautified_comments:
-            markdown_content += f"| {comment['author']} | {comment['text']} |\n"
+            markdown_content += f"""
+| {comment['author']} | {comment['text']}
+"""
 
-        with open(f'{video_id}_data.md', 'w', encoding='utf-8') as md_file:
-            md_file.write(markdown_content)
+        return markdown_content
 
-        logging.info("Extraction and Markdown file creation completed successfully.")
-   
-async def extract_heatmap_svgs(page):
-    # Wait for the network to be idle to ensure all resources have loaded
+# Sidebar for user input
+st.sidebar.title("YouTube Video Analysis")
+video_url = st.sidebar.text_input("Enter YouTube video URL")
+analyze_button = st.sidebar.button("Analyze Video")
+
+# Main layout structure
+st.title("YouTube Video Data Analysis")
+st.write("This app extracts and visualizes insights from YouTube videos.")
+
+if analyze_button and video_url:
+    # Extract video details here
+    video_id = video_url.split("v=")[1]
+    
+    st.subheader("Video Details")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        # Display video thumbnail
+        thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+        st.image(thumbnail_url, caption="Video Thumbnail", width=200)
+        
+    with col2:
+        # Display video metadata
+        st.write("**Video URL:**", video_url)
+        st.write("**Video ID:**", video_id)
+
+    # Display Heatmap Data with Graph
+    def plot_attention_heatmap(heatmap_points):
+        # Create DataFrame from heatmap points
+        heatmap_df = pd.DataFrame(heatmap_points)
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.heatmap(heatmap_df.pivot("duration", "Attention"), cmap="YlGnBu", ax=ax)
+        st.pyplot(fig)
+
+    # Example heatmap data (replace with real data extraction)
+    heatmap_points = parse_svg_heatmap(heatmap_svg, video_duration_seconds)
+
+    st.subheader("Attention Heatmap")
+    plot_attention_heatmap(heatmap_points)
+
+    # Display Transcript Analysis with Highlights
+    st.subheader("Transcript Analysis")
+
+    # Assuming `significant_sections` is a dict with 'rises' and 'falls'
+    significant_sections = get_significant_transcript_sections(transcript, analysis_data)
+
+    # Display each section
+    with st.expander("Significant Rises in Attention"):
+        for rise in significant_sections['rises']:
+            st.write(" ".join([entry['text'] for entry in rise]))
+
+    with st.expander("Significant Falls in Attention"):
+        for fall in significant_sections['falls']:
+            st.write(" ".join([entry['text'] for entry in fall]))
+
+    # Display Comments Sentiment Analysis
+    def plot_sentiment_pie(positive, negative):
+        labels = ['Positive', 'Negative']
+        sizes = [positive, negative]
+        colors = ['#4CAF50', '#FF5252']
+        explode = (0.1, 0)  
+
+        fig1, ax1 = plt.subplots()
+        ax1.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%',
+                shadow=True, startangle=140)
+        st.pyplot(fig1)
+
+    positive_comments = 120  # Replace with actual analysis result
+    negative_comments = 80  # Replace with actual analysis result
+
+    st.subheader("Comment Sentiment Analysis")
+    plot_sentiment_pie(positive_comments, negative_comments)
+
+    # Display Dominant Colors in Thumbnail
+    st.subheader("Thumbnail Color Analysis")
+
+    dominant_color, palette, thumbnail_text = analyze_thumbnail(video_id)
+    st.write("**Dominant Color:**", dominant_color)
+
+    st.write("**Color Palette:**")
+    for color in palette:
+        st.color_picker(label=f"Color", value=f'#{color[0]:02x}{color[1]:02x}{color[2]:02x}')
+
+# Helper functions
+def parse_svg_heatmap(heatmap_svg, video_duration_seconds, svg_width=1000, svg_height=1000):
+    # Implementation of SVG parsing
+    pass
+
+def get_significant_transcript_sections(transcript, analysis_data):
+    # Implementation of transcript section extraction
+    pass
+
+def analyze_thumbnail(video_id):
+    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+    thumbnail_response = requests.get(thumbnail_url)
+    thumbnail_image = Image.open(BytesIO(thumbnail_response.content))
+
+    color_thief = ColorThief(BytesIO(thumbnail_response.content))
+    dominant_color = color_thief.get_color(quality=1)
+    palette = color_thief.get_palette(color_count=6)
+
+    thumbnail_text = pytesseract.image_to_string(thumbnail_image)
+
+    return dominant_color, palette, thumbnail_text.strip()
+
+def get_comment_sentiment(comment_text):
+    analysis = TextBlob(comment_text)
+    return "Positive" if analysis.sentiment.polarity > 0 else "Negative"
+
+def analyze_comments_sentiment(beautified_comments, comment_count):
+    positive_comments = sum(1 for comment in beautified_comments if get_comment_sentiment(comment['text']) == "Positive")
+    overall_sentiment = "Positive" if positive_comments > (comment_count / 2) else "Negative"
+    return overall_sentiment
+
+def fetch_transcript(video_id: str):
     try:
-        await page.wait_for_load_state('networkidle')
-        logging.info("Network idle state reached")
+        return YouTubeTranscriptApi.get_transcript(video_id)
+    except TranscriptsDisabled:
+        print("Transcripts are disabled for this video.")
+        return None
     except Exception as e:
-        logging.error(f"Timeout waiting for network idle: {e}")
-        return f"Timeout waiting for network idle: {e}"
+        print(f"Error fetching default transcript: {e}")
 
-    # Wait for the heatmap container to be visible
-    try:
-        await page.wait_for_selector('div.ytp-heat-map-container', state='hidden', timeout=20000)
-    except Exception as e:
-        logging.error(f"Timeout waiting for heatmap container: {e}")
-        return f"Timeout waiting for heatmap container: {e}"
+        try:
+            available_transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+            if 'en' in available_transcripts:
+                return available_transcripts.find_transcript(['en']).fetch()
+            else:
+                first_transcript = next(available_transcripts).fetch()
+                print("No English transcript found, using the first available.")
+                return first_transcript
+        except Exception as fallback_error:
+            print(f"Error fetching alternative transcripts: {fallback_error}")
+            return None
 
-    heatmap_container = await page.query_selector('div.ytp-heat-map-container')
-    if heatmap_container:
-        heatmap_container_html = await heatmap_container.inner_html()
-    else:
-        return "Heatmap container not found"
-
-    tree = html.fromstring(heatmap_container_html)
-
-    heatmap_elements = tree.xpath('//div[@class="ytp-heat-map-chapter"]/svg')
-
-    if not heatmap_elements:
-        return "Heatmap SVG not found"
-
-    total_width = sum(get_pixel_value(elem.attrib['width']) for elem in heatmap_elements)
-    total_height = max(get_pixel_value(elem.attrib['height']) for elem in heatmap_elements)
-
-    combined_svg = etree.Element('svg', {
-        'xmlns': 'http://www.w3.org/2000/svg',
-        'width': f'{total_width}px',
-        'height': f'{total_height}px',
-        'viewBox': f'0 0 {total_width} {total_height}'
-    })
-
-    current_x = 0
-    for elem in heatmap_elements:
-        width = get_pixel_value(elem.attrib['width'])
-        height = get_pixel_value(elem.attrib['height'])
-
-        group = etree.SubElement(combined_svg, 'g', {
-            'transform': f'translate({current_x}, 0)'
-        })
-
-        for child in elem.getchildren():
-            group.append(child)
-
-        current_x += width
-
-    combined_svg_str = etree.tostring(combined_svg, pretty_print=True).decode('utf-8')
-
-    if not combined_svg_str or combined_svg_str.strip() == "":
-        logging.error("Combined SVG heatmap content is empty or None")
-        return "Combined SVG heatmap content is empty or None"
-
-    return combined_svg_str
-
-# Helper function to get pixel value
-def get_pixel_value(value):
-    if 'px' in value:
-        return int(value.replace('px', ''))
-    elif '%' in value:
-        # Assuming the parent container's width is 1000px for simplicity
-        return int(float(value.replace('%', '')) * 10)
-    else:
-        raise ValueError(f"Unsupported width/height format: {value}")
-
-async def extract_comments(video_id, limit=100):
+def extract_comments(video_id):
     downloader = YoutubeCommentDownloader()
     comments = downloader.get_comments_from_url(f'https://www.youtube.com/watch?v={video_id}', sort_by=SORT_BY_RECENT)
-    return list(islice(comments, limit))
+    return list(islice(comments, 100))  # Limit to 100 comments for example
 
-def beautify_output(input_text):
-    # Remove leading and trailing whitespace
-    input_text = input_text.strip()
-    
-    # Split the input text into sections
-    sections = re.split(r'\n\s*\n', input_text)
-    
-    # Initialize the Markdown output
-    markdown_output = []
-    
-    # Process each section
-    for section in sections:
-        # Remove leading and trailing whitespace from each section
-        section = section.strip()
-        
-        # Check if the section is a title
-        if section.startswith('#'):
-            markdown_output.append(section)
-            continue
-        
-        # Check if the section is a description
-        if section.startswith('**Description:**'):
-            markdown_output.append('## Description')
-            description_lines = section.split('\n')[1:]
-            for line in description_lines:
-                markdown_output.append(f"- {line.strip()}")
-            continue
-        
-        # Check if the section is a list of links
-        if section.startswith('## Links'):
-            markdown_output.append('## Links')
-            links = section.split('\n')[1:]
-            for link in links:
-                markdown_output.append(f"- {link.strip()}")
-            continue
-        
-        # Check if the section is a heatmap SVG
-        if section.startswith('## Heatmap SVG'):
-            markdown_output.append('## Heatmap SVG')
-            svg_content = section.split('\n', 1)[1]
-            markdown_output.append(f"```svg\n{svg_content}\n```")
-            continue
-        
-        # Check if the section is a list of comments
-        if section.startswith('## Comments'):
-            markdown_output.append('## Comments')
-            comments = eval(section.split('\n', 1)[1])
-            for comment in comments:
-                markdown_output.append(f"### {comment['author']}")
-                markdown_output.append(f"{comment['text']}")
-            continue
-        
-        # If the section is a list of details
-        if section.startswith('**'):
-            markdown_output.append('## Video Details')
-            details = section.split('\n')
-            for detail in details:
-                markdown_output.append(f"- {detail.strip()}")
-            continue
-    
-    # Join the Markdown output into a single string
-    return '\n'.join(markdown_output)
-    
+def main():
+    if analyze_button and video_url:
+        video_id = video_url.split("v=")[1]
+        transcript = fetch_transcript(video_id)
+        comments = extract_comments(video_id)
+        beautified_comments = [{"author": comment['author'], "text": re.sub(r'<.*?>', '', comment['text'])} for comment in comments]
+        comment_count = len(beautified_comments)
+        overall_sentiment = analyze_comments_sentiment(beautified_comments, comment_count)
+
+        st.subheader("Comments")
+        for comment in beautified_comments:
+            st.write(f"**{comment['author']}:** {comment['text']}")
+
+        st.subheader("Overall Sentiment")
+        st.write(f"**Overall Comment Sentiment:** {overall_sentiment}")
+
 if __name__ == "__main__":
-    st.title("YouTube Video Analyzer")
-
-    # User input for video ID
-    video_id = st.text_input("Enter YouTube Video ID:")
-
-    if st.button("Analyze Video"):
-        with st.spinner("Extracting data..."):
-            start_time = datetime.datetime.now()
-            st.write(f"Extracting data for video ID @ start_time: {datetime.datetime.now()}")
-
-            try:
-                asyncio.run(extract_video_data(video_id))
-                # Load the extracted data from the saved Markdown file
-                end_time = datetime.datetime.now()
-                st.write(f"Finished extracting data for video ID @ end_time: {datetime.datetime.now()}")
-
-                with open(f"{video_id}_data.md", "r") as f:
-                    markdown_content = f.read()
-                st.write(f"Total time taken: {end_time - start_time}")
-                # Display the Markdown content using Streamlit
-                st.markdown(markdown_content)
-
-                # Create a download button for the Markdown file
-                st.download_button(
-                    label="Download Report",
-                    data=markdown_content,
-                    file_name=f"{video_id}_report.md",
-                    mime="text/markdown"
-                )
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
+    main()
