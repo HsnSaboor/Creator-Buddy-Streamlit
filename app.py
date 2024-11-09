@@ -23,6 +23,9 @@ import math
 from typing import List, Dict
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
 
+os.system('pip install playwright')
+os.system('playwright install')
+
 client = Groq(
 
     api_key='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'
