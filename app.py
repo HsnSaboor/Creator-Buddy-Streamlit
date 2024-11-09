@@ -28,9 +28,7 @@ os.system('pip install playwright')
 os.system('playwright install')
 
 client = Groq(
-
     api_key='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'
-
 )
 
 # Configure logging
@@ -371,13 +369,12 @@ async def extract_video_data(video_id):
         like_to_views_ratio = likes / views * 100 if views else 0
         comment_to_like_ratio = comment_count / likes * 100 if likes else 0
 
-        logging.info(f"Gettign Ai Analysis for video ID: {video_id}")
+        logging.info(f"Getting AI Analysis for video ID: {video_id}")
 
         dominant_color, palette, thumbnail_text = analyze_thumbnail(video_id)
 
         transcript = fetch_transcript(video_id)
         significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis) if transcript else {}
-
 
         # Extract topics from title, description, and transcript
         combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
@@ -391,7 +388,6 @@ async def extract_video_data(video_id):
         logging.info(f"Creating Output Markdown for video ID: {video_id}")
 
         markdown_content = f"""
-       
 # {title}
 
 ## Video Statistics
@@ -464,13 +460,13 @@ async def extract_video_data(video_id):
 
 """
         
-    for comment in beautified_comments:
-        markdown_content += f"| {comment['author']} | {comment['text']} |\n"
+        for comment in beautified_comments:
+            markdown_content += f"| {comment['author']} | {comment['text']} |\n"
 
-    with open(f'{video_id}_data.md', 'w', encoding='utf-8') as md_file:
-        md_file.write(markdown_content)
+        with open(f'{video_id}_data.md', 'w', encoding='utf-8') as md_file:
+            md_file.write(markdown_content)
 
-    logging.info("Extraction and Markdown file creation completed successfully.")
+        logging.info("Extraction and Markdown file creation completed successfully.")
    
 async def extract_heatmap_svgs(page):
     # Wait for the network to be idle to ensure all resources have loaded
@@ -533,7 +529,6 @@ async def extract_heatmap_svgs(page):
 
     return combined_svg_str
 
-
 # Helper function to get pixel value
 def get_pixel_value(value):
     if 'px' in value:
@@ -543,8 +538,6 @@ def get_pixel_value(value):
         return int(float(value.replace('%', '')) * 10)
     else:
         raise ValueError(f"Unsupported width/height format: {value}")
-
-
 
 async def extract_comments(video_id, limit=100):
     downloader = YoutubeCommentDownloader()
@@ -617,33 +610,32 @@ def beautify_output(input_text):
 if __name__ == "__main__":
     st.title("YouTube Video Analyzer")
 
-# User input for video ID
+    # User input for video ID
     video_id = st.text_input("Enter YouTube Video ID:")
 
-if st.button("Analyze Video"):
+    if st.button("Analyze Video"):
+        with st.spinner("Extracting data..."):
+            start_time = datetime.datetime.now()
+            st.write(f"Extracting data for video ID @ start_time: {datetime.datetime.now()}")
 
-    with st.spinner("Extracting data..."):
-        start_time = datetime.datetime.now()
-        st.write(f"Extracting data for video ID @ start_time: {datetime.datetime.now()}")
+            try:
+                asyncio.run(extract_video_data(video_id))
+                # Load the extracted data from the saved Markdown file
+                end_time = datetime.datetime.now()
+                st.write(f"Finished extracting data for video ID @ end_time: {datetime.datetime.now()}")
 
-        try:
-            asyncio.run(extract_video_data(video_id))
-            # Load the extracted data from the saved Markdown file
-            end_time = datetime.datetime.now()
-            st.write(f"Finished extracting data for video ID @ end_time: {datetime.datetime.now()}")
+                with open(f"{video_id}_data.md", "r") as f:
+                    markdown_content = f.read()
+                st.write(f"Total time taken: {end_time - start_time}")
+                # Display the Markdown content using Streamlit
+                st.markdown(markdown_content)
 
-            with open(f"{video_id}_data.md", "r") as f:
-                markdown_content = f.read()
-            st.write(f"total time taken: {end_time - start_time}")
-            # Display the Markdown content using Streamlit
-            st.markdown(markdown_content)
-
-            # Create a download button for the Markdown file
-            st.download_button(
-                label="Download Report",
-                data=markdown_content,
-                file_name=f"{video_id}_report.md",
-                mime="text/markdown"
-            )
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
+                # Create a download button for the Markdown file
+                st.download_button(
+                    label="Download Report",
+                    data=markdown_content,
+                    file_name=f"{video_id}_report.md",
+                    mime="text/markdown"
+                )
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
