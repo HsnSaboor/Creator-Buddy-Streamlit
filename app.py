@@ -461,6 +461,13 @@ async def extract_video_data(video_id):
 {heatmap_svg}
 
 """
+        else:
+            markdown_content += """
+## Heatmap Analysis
+
+- **Heatmap not available for this video.**
+
+"""
 
         markdown_content += f"""
 ## Comments
