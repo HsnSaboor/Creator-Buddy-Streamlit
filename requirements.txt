@@ -9,6 +9,7 @@ pytesseract
 colorthief
 playwright
 playwright-stealth
+youtube-transcript-api
 lxml-html-clean
 asyncio
 groq
