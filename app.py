@@ -18,6 +18,7 @@ import pytesseract
 from groq import Groq
 from colorthief import ColorThief
 import json
+import os
 from io import BytesIO
 import math
 from typing import List, Dict
