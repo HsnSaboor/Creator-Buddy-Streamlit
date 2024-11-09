@@ -79,7 +79,7 @@ def extract_topics(text):
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message}
         ],
-        model="llama3-8b-8192",
+        model="llama-3.1-8b-instant",
         temperature=0.5,
         max_tokens=1024,
         top_p=1,
@@ -378,14 +378,9 @@ async def extract_video_data(video_id):
         transcript = fetch_transcript(video_id)
         significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis) if transcript else {}
 
-        # Extract topics from title, description, and transcript
-        title_topics = extract_topics(title)
-        description_topics = extract_topics(description)
-        transcript_text = ' '.join([entry['text'] for entry in transcript[:1000]]) if transcript else ''
-        transcript_topics = extract_topics(transcript_text)
 
         # Extract topics from title, description, and transcript
-        combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:150]])}" if transcript else f"{title}\n{description}"
+        combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
         topics = extract_topics(combined_text)
 
         # Ensure topics is a dictionary with the expected keys
@@ -396,7 +391,7 @@ async def extract_video_data(video_id):
         logging.info(f"Creating Output Markdown for video ID: {video_id}")
 
         markdown_content = f"""
-        
+       
 # {title}
 
 ## Video Statistics
