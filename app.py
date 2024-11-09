@@ -281,7 +281,7 @@ async def extract_video_data(video_id):
             logging.warning("Expand button not found.")
 
         await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-        await page.wait_for_timeout(8000)
+        await page.wait_for_timeout(10000)
 
         content = await page.content()
         tree = html.fromstring(content)
