@@ -58,9 +58,10 @@ def extract_topics(text):
     You are a topic extraction model. Your task is to extract the main and niche topics from the given text.
     The main topic should be a broad category that encompasses the overall content of the text.
     The niche topic should be a more specific sub-category within the main topic.
+    The third topic should be a specific topic or theme that is mentioned in the text.
+    Use only the description, title, and thumbnail text to determine the third topic.
     If two videos are in the same niche, they should have the same main and niche topics.
-    The third topic can be different, as long as it still falls within the same niche.
-    Return the main and niche topics as a JSON object with the following structure:
+    Return the main, niche, and third topics as a JSON object with the following structure:
     {
         "main_topic": "main topic",
         "niche_topic": "niche topic",
@@ -78,9 +79,9 @@ def extract_topics(text):
             {"role": "user", "content": user_message}
         ],
         model="llama-3.1-8b-instant",
-        temperature=0.5,
+        temperature=0.3,  # Lower temperature for less creativity
         max_tokens=1024,
-        top_p=1,
+        top_p=0.9,  # More deterministic output
         stop=None,
         stream=False,
         response_format={"type": "json_object"}
@@ -317,9 +318,16 @@ async def extract_video_data(video_id):
         duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
         duration_to_seconds_value = duration_to_seconds(duration)
 
-        heatmap_points = parse_svg_heatmap(heatmap_svg, duration_to_seconds_value)
+        heatmap_points = []
+        heatmap_analysis = {}
+        significant_transcript_sections = {}
 
-        heatmap_analysis = analyze_heatmap_data(heatmap_points)
+        if heatmap_svg and heatmap_svg != "Heatmap SVG not found":
+            heatmap_points = parse_svg_heatmap(heatmap_svg, duration_to_seconds_value)
+            heatmap_analysis = analyze_heatmap_data(heatmap_points)
+
+            transcript = fetch_transcript(video_id)
+            significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis) if transcript else {}
 
         description_elements = tree.xpath('//ytd-text-inline-expander[@id="description-inline-expander"]//yt-attributed-string[@user-input=""]//span[@class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap"]')
         description_parts = []
@@ -373,11 +381,8 @@ async def extract_video_data(video_id):
 
         dominant_color, palette, thumbnail_text = analyze_thumbnail(video_id)
 
-        transcript = fetch_transcript(video_id)
-        significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis) if transcript else {}
-
-        # Extract topics from title, description, and transcript
-        combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
+        # Extract topics from title, description, and thumbnail text
+        combined_text = f"{title}\n{description}\n{thumbnail_text}"
         topics = extract_topics(combined_text)
 
         # Ensure topics is a dictionary with the expected keys
@@ -423,6 +428,10 @@ async def extract_video_data(video_id):
 
 {', '.join(links)}
 
+"""
+
+        if heatmap_svg and heatmap_svg != "Heatmap SVG not found":
+            markdown_content += f"""
 ## Heatmap Analysis
 
 - **Average Attention:** {heatmap_analysis['average_attention']:.2f}%
@@ -451,6 +460,9 @@ async def extract_video_data(video_id):
 ```svg
 {heatmap_svg}
 
+"""
+
+        markdown_content += f"""
 ## Comments
 
 - **Total No of Comments:** {comment_count}
