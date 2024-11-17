@@ -541,9 +541,9 @@ async def initialize_browser():
 async def extract_video_data(video_id):
     logging.info(f"Extracting video data for video ID: {video_id}")
     
-    await initialize_browser()
-
     try:
+        browser, context, page = await initialize_browser()
+
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
 
@@ -796,9 +796,9 @@ async def extract_video_data(video_id):
         logging.info("Extraction and json file creation completed successfully.")
 
         return output_json
-    finally:
-        # Do not close the browser here; it will be closed when the application terminates
-        pass
+    except Exception as e:
+        logging.error(f"Error during video extraction: {e}")
+        return {"error": str(e)}
 
 async def extract_heatmap_svgs(page):
     # Wait for the network to be idle to ensure all resources have loaded
@@ -941,6 +941,18 @@ def beautify_output(input_text):
 
 # Streamlit App
 def main():
+    # Initialize the browser before starting the Streamlit app
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(initialize_browser())
+    except Exception as e:
+        logging.error(f"Error during browser initialization: {e}")
+        return
+    finally:
+        loop.close()
+
+    # Start the Streamlit app
     st.title("YouTube Video Data Extractor")
     video_id = st.text_input("Enter the YouTube video ID:")
 
@@ -952,6 +964,8 @@ def main():
             try:
                 data = loop.run_until_complete(extract_video_data(video_id))
                 st.json(data)
+            except Exception as e:
+                st.error(f"Error during extraction: {e}")
             finally:
                 loop.close()
         else:
