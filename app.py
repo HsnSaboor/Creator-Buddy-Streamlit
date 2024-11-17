@@ -8,7 +8,7 @@ import logging
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize, sent_tokenize
-from fastcounter import FastCounter as Counter
+from fastcounter import Counter
 import pandas as pd
 from itertools import islice
 import xml.etree.ElementTree as ET
