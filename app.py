@@ -942,8 +942,13 @@ def main():
     if st.button("Extract Data"):
         if video_id:
             st.write("Extracting data...")
-            data = asyncio.run(extract_video_data(video_id))
-            st.json(data)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                data = loop.run_until_complete(extract_video_data(video_id))
+                st.json(data)
+            finally:
+                loop.close()
         else:
             st.write("Please enter a valid YouTube video ID.")
 
