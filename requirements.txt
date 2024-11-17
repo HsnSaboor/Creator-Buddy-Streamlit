@@ -12,6 +12,7 @@ opencv-python
 pytesseract
 groq
 colorthief
+opencv-python
 orjson
 typing
 youtube_transcript_api
