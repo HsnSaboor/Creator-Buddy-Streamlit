@@ -20,7 +20,7 @@ import pytesseract
 from groq import Groq
 from colorthief import ColorThief
 import orjson
-from io import BytesIOe
+from io import BytesIO
 import os
 import math
 from typing import List, Dict, Optional, Any
