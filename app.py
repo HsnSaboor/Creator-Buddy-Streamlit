@@ -65,6 +65,39 @@ RESOLUTIONS = [
 
 BROWSERS = ["chromium"]
 
+async def initialize_browser():
+    logging.info("Initializing browser and caching YouTube...")
+    async with async_playwright() as p:
+        browser_type = random.choice(BROWSERS)
+        browser = await getattr(p, browser_type).launch(
+            headless=True,
+            args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage", "--disable-extensions", "--disable-plugins"]
+        )
+
+        context = await browser.new_context(
+            user_agent=random.choice(USER_AGENTS),
+            viewport=random.choice(RESOLUTIONS),
+            locale="en-US",
+            ignore_https_errors=True,
+            java_script_enabled=True,
+            bypass_csp=True
+        )
+
+        await context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["video", "audio", "font"] else route.continue_())
+
+        page = await context.new_page()
+
+        # Cache YouTube by running a sample video
+        sample_video_url = "https://www.youtube.com/watch?v=kXTyejeVwr8"
+        await page.goto(sample_video_url, wait_until="domcontentloaded", timeout=60000)
+
+        # Ensure the page is fully loaded
+        await page.wait_for_load_state('networkidle')
+
+        logging.info("YouTube cached successfully.")
+
+        return browser, context, page
+
 def detect_ctas(Transcript):
     # List of common CTA phrases and patterns
     cta_patterns = [
@@ -338,10 +371,6 @@ def analyze_heatmap_data(heatmap_points: List[Dict[str, float]], threshold: floa
         'total_rises': len(significant_rises),
         'total_falls': len(significant_falls)
     }
-
-from typing import List, Dict, Any, Optional
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 
 def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
     """
