@@ -8,7 +8,7 @@ import logging
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize, sent_tokenize
-from collections import Counter  # Corrected import
+from collections import Counter
 import pandas as pd
 from itertools import islice
 import xml.etree.ElementTree as ET
@@ -29,9 +29,9 @@ import spacy
 import dask.dataframe as dd
 import uvloop
 import streamlit as st
-from PIL import Image  # Importing Image from PIL
+from PIL import Image
 
-nltk.download('punkt_tab')
+nltk.download('punkt')
 nltk.download('stopwords')
 
 os.system('playwright install')
@@ -64,39 +64,6 @@ RESOLUTIONS = [
 ]
 
 BROWSERS = ["chromium"]
-
-async def initialize_browser():
-    logging.info("Initializing browser and caching YouTube...")
-    async with async_playwright() as p:
-        browser_type = random.choice(BROWSERS)
-        browser = await getattr(p, browser_type).launch(
-            headless=True,
-            args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage", "--disable-extensions", "--disable-plugins"]
-        )
-
-        context = await browser.new_context(
-            user_agent=random.choice(USER_AGENTS),
-            viewport=random.choice(RESOLUTIONS),
-            locale="en-US",
-            ignore_https_errors=True,
-            java_script_enabled=True,
-            bypass_csp=True
-        )
-
-        await context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["video", "audio", "font"] else route.continue_())
-
-        page = await context.new_page()
-
-        # Cache YouTube by running a sample video
-        sample_video_url = "https://www.youtube.com/watch?v=kXTyejeVwr8"
-        await page.goto(sample_video_url, wait_until="domcontentloaded", timeout=60000)
-
-        # Ensure the page is fully loaded
-        await page.wait_for_load_state('networkidle')
-
-        logging.info("YouTube cached successfully.")
-
-        return browser, context, page
 
 def detect_ctas(Transcript):
     # List of common CTA phrases and patterns
@@ -537,11 +504,12 @@ def calculate_watch_time(views, duration_seconds):
     }
 
 async def extract_video_data(video_id):
-        logging.info(f"Extracting video data for video ID: {video_id}")
+    logging.info(f"Extracting video data for video ID: {video_id}")
     
-        # Initialize browser and cache YouTube
-        browser, context, page = await initialize_browser()
+    # Initialize browser and cache YouTube
+    browser, context, page = await initialize_browser()
 
+    try:
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
 
@@ -794,6 +762,8 @@ async def extract_video_data(video_id):
         logging.info("Extraction and json file creation completed successfully.")
 
         return output_json
+    finally:
+        await browser.close()
 
 async def extract_heatmap_svgs(page):
     # Wait for the network to be idle to ensure all resources have loaded
