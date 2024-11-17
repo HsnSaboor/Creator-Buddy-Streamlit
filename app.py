@@ -537,13 +537,13 @@ def calculate_watch_time(views, duration_seconds):
     }
 
 async def extract_video_data(video_id):
-    logging.info(f"Extracting video data for video ID: {video_id}")
+        logging.info(f"Extracting video data for video ID: {video_id}")
     
-    # Initialize browser and cache YouTube
-    browser, context, page = await initialize_browser()
+        # Initialize browser and cache YouTube
+        browser, context, page = await initialize_browser()
 
-    video_url = f"https://www.youtube.com/watch?v={video_id}"
-    await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
 
         if "m.youtube.com" in page.url:
             await page.goto(video_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
