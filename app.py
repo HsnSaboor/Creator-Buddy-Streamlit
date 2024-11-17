@@ -21,6 +21,7 @@ from groq import Groq
 from colorthief import ColorThief
 import orjson
 from io import BytesIO
+import os
 import math
 from typing import List, Dict, Optional, Any
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, Transcript, TranscriptList
