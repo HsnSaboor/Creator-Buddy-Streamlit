@@ -5,6 +5,12 @@ libwoff1
 libevent-2.1-7
 libopus0
 libharfbuzz0b
+libxml2
+libxslt1.1
+libopencv-dev
+tesseract-ocr
+libjpeg-dev
+zlib1g-dev
 libvpx6
 libxcb-shm0
 libasound2
