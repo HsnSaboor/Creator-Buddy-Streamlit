@@ -344,10 +344,6 @@ def analyze_heatmap_data(heatmap_points: List[Dict[str, float]], threshold: floa
         'total_falls': len(significant_falls)
     }
 
-from typing import List, Dict, Any, Optional
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
-
 def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
     """
     Fetch the transcript for a YouTube video, prioritizing English transcripts.
@@ -540,6 +536,7 @@ async def initialize_browser():
             await page.wait_for_load_state('networkidle')
 
             logging.info("YouTube cached successfully.")
+    return browser, context, page
 
 async def extract_video_data(video_id):
     logging.info(f"Extracting video data for video ID: {video_id}")
