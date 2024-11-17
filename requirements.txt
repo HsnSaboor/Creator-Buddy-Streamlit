@@ -7,7 +7,6 @@ nltk
 fastcounter
 pandas
 itertools
-xml.etree.ElementTree
 textblob
 youtube_comment_downloader
 requests
@@ -16,7 +15,6 @@ pytesseract
 groq
 colorthief
 orjson
-io
 math
 typing
 youtube_transcript_api
