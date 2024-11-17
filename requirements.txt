@@ -5,7 +5,6 @@ regex
 nltk
 fastcounter
 pandas
-itertools
 textblob
 youtube_comment_downloader
 requests
@@ -14,7 +13,6 @@ pytesseract
 groq
 colorthief
 orjson
-math
 typing
 youtube_transcript_api
 spacy
