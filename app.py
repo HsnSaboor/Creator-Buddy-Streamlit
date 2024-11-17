@@ -15,12 +15,12 @@ import xml.etree.ElementTree as ET
 from textblob import TextBlob
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
 import requests
-import cv2
+import cv2e
 import pytesseract
 from groq import Groq
 from colorthief import ColorThief
 import orjson
-from io import BytesIO
+from io import BytesIOe
 import os
 import math
 from typing import List, Dict, Optional, Any
@@ -30,6 +30,9 @@ import dask.dataframe as dd
 import uvloop
 import streamlit as st
 from PIL import Image  # Importing Image from PIL
+
+nltk.download('punkt_tab')
+nltk.download('stopwords')
 
 os.system('playwright install')
 
