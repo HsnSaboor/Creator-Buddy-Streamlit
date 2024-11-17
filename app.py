@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 from textblob import TextBlob
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
 import requests
-import cv2e
+import cv2
 import pytesseract
 from groq import Groq
 from colorthief import ColorThief
