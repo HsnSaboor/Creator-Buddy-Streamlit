@@ -1,7 +1,6 @@
 asyncio
 playwright
 lxml
-urllib3
 regex
 nltk
 fastcounter
