@@ -396,6 +396,16 @@ def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
         print(f"Error fetching transcript: {e}")
         return None
 
+    except TranscriptsDisabled:
+        print("Transcripts are disabled for this video.")
+        return None
+    except NoTranscriptFound:
+        print("No transcripts found for this video.")
+        return None
+    except Exception as e:
+        print(f"Error fetching transcript: {e}")
+        return None
+
 def get_significant_transcript_sections(transcript: Optional[List[Dict[str, any]]], analysis_data: Dict[str, any]) -> Dict[str, List[List[Dict[str, any]]]]:
     if not transcript:
         print("Transcript is unavailable. Returning empty significant sections.")
