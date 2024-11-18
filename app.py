@@ -802,7 +802,7 @@ async def extract_video_data(video_id):
             }
 
             # Converting JSON to string with proper indentation
-            output_json_str = orjson.dumps(output_json, option=orjson.OPT_INDENT_4).decode('utf-8')
+            output_json_str = orjson.dumps(output_json, option=orjson.OPT_INDENT_2).decode('utf-8')
 
             with open(f'{video_id}_data.json', 'w', encoding='utf-8') as json_file:
                 json_file.write(output_json_str)
