@@ -497,6 +497,10 @@ def calculate_watch_time(views, duration_seconds):
     }
 
 def main():
+
+    nltk.download('punkt')
+    nltk.download('stopwords')
+    os.system('playwright install')
     # Start the Streamlit app
     st.title("YouTube Video Data Extractor")
     video_id = st.text_input("Enter the YouTube video ID:")
@@ -945,7 +949,4 @@ def beautify_output(input_text):
     return '\n'.join(json_output)
 
 if __name__ == "__main__":
-    nltk.download('punkt')
-    nltk.download('stopwords')
-    os.system('playwright install')
     main()
