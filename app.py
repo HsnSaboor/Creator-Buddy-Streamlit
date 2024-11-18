@@ -1,5 +1,5 @@
 import asyncio
-from browser_manager import initialize_browser
+from browser_manager import initialize_browser, close_browser
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
