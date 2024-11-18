@@ -703,6 +703,11 @@ async def extract_video_data(video_id):
             combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
             topics = extract_topics(combined_text)
             
+            # Ensure topics are properly retrieved
+            main_topic = topics.get('main_topic', 'N/A')
+            niche_topic = topics.get('niche_topic', 'N/A')
+            third_topic = topics.get('third_topic', 'N/A')
+            
             # Get summary
             summary_response = summarize_video_content(combined_text)
             summary = summary_response.get("video_summary", "Summary not available")
@@ -784,7 +789,6 @@ async def extract_video_data(video_id):
                     "list": beautified_comments
                 }
             }
-
             # Converting JSON to string with proper indentation
             output_json_str = json.dumps(output_json, indent=4)
 
