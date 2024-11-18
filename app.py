@@ -685,7 +685,7 @@ async def extract_video_data(video_id):
 
             # Fetch transcript
             transcript = fetch_transcript(video_id)
-    
+            
             # Check if transcript is available
             if transcript is None or len(transcript) == 0:
                 print(f"No transcript available for video {video_id}. Skipping transcript analysis.")
@@ -694,36 +694,19 @@ async def extract_video_data(video_id):
             else:
                 # Proceed with transcript-related logic if transcript is available
                 significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis)
-    
+            
             # Ensure significant_transcript_sections has default keys
             rises_sections = significant_transcript_sections.get('rises', [])
             falls_sections = significant_transcript_sections.get('falls', [])
-
+            
             # Extract topics
             combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
             topics = extract_topics(combined_text)
-
-            top_keywords = analyze_keywords(title, description)
-            insights, suggestion = get_keyword_insights(top_keywords, title, description)
-
-            readability_score, rating = calculate_readability_score(description)
-            tips = get_readability_tips(rating)
-
-            # Ensure topics are properly retrieved
-            main_topic = topics.get('main_topic', 'N/A')
-            niche_topic = topics.get('niche_topic', 'N/A')
-            third_topic = topics.get('third_topic', 'N/A')
-
+            
             # Get summary
             summary_response = summarize_video_content(combined_text)
             summary = summary_response.get("video_summary", "Summary not available")
-
-            cta_list = detect_ctas(description)
-
-            watch_time = calculate_watch_time(views, duration_to_seconds_value) if duration_to_seconds_value else "Duration not available"
-
-            logging.info(f"Creating Output json for video ID: {video_id}")
-
+            
             # Enhancing output for better readability with newlines in long text fields
             output_json = {
                 "title": title,
