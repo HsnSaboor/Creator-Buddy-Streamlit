@@ -70,40 +70,6 @@ browser = None
 context = None
 page = None
 
-async def initialize_browser():
-    global browser, context, page
-    if browser is None:
-        logging.info("Initializing browser and caching YouTube...")
-        async with async_playwright() as p:
-            browser_type = random.choice(BROWSERS)
-            browser = await getattr(p, browser_type).launch(
-                headless=True,
-                args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage", "--disable-extensions", "--disable-plugins"]
-            )
-
-            context = await browser.new_context(
-                user_agent=random.choice(USER_AGENTS),
-                viewport=random.choice(RESOLUTIONS),
-                locale="en-US",
-                ignore_https_errors=True,
-                java_script_enabled=True,
-                bypass_csp=True
-            )
-
-            await context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["video", "audio", "font"] else route.continue_())
-
-            page = await context.new_page()
-
-            # Cache YouTube by running a sample video
-            sample_video_url = "https://www.youtube.com/watch?v=kXTyejeVwr8"
-            await page.goto(sample_video_url, wait_until="domcontentloaded", timeout=60000)
-
-            # Ensure the page is fully loaded
-            await page.wait_for_load_state('networkidle')
-
-            logging.info("YouTube cached successfully.")
-    return browser, context, page
-
 async def extract_video_data(video_id, page):
     logging.info(f"Extracting video data for video ID: {video_id}")
     
@@ -398,11 +364,14 @@ def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(browser.close())
+        loop.run_until_complete(close_browser())
     except Exception as e:
         logging.error(f"Error closing browser: {e}")
     finally:
         loop.close()
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
