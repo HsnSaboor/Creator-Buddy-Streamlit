@@ -497,11 +497,6 @@ def calculate_watch_time(views, duration_seconds):
     }
 
 def main():
-
-    nltk.download('punkt')
-    nltk.download('punkt_tab')
-    nltk.download('stopwords')
-    os.system('playwright install')
     # Start the Streamlit app
     st.title("YouTube Video Data Extractor")
     video_id = st.text_input("Enter the YouTube video ID:")
@@ -522,7 +517,7 @@ def main():
             st.write("Please enter a valid YouTube video ID.")
 
 async def extract_video_data(video_id):
-    logging.info(f"Warming Up ...")
+    logging.info(f"Extracting video data for video ID: {video_id}")
     
     try:
         async with async_playwright() as p:
@@ -552,7 +547,7 @@ async def extract_video_data(video_id):
             # Ensure the page is fully loaded
             await page.wait_for_load_state('networkidle')
 
-            logging.info("Running The Race.")
+            logging.info("YouTube cached successfully.")
 
             video_url = f"https://www.youtube.com/watch?v={video_id}"
             await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
@@ -609,7 +604,12 @@ async def extract_video_data(video_id):
             duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
             duration_to_seconds_value = duration_to_seconds(duration)
 
-            heatmap_points = parse_svg_heatmap(heatmap_svg, duration_to_seconds_value)
+            try:
+                heatmap_points = parse_svg_heatmap(heatmap_svg, duration_to_seconds_value)
+            except ET.ParseError as e:
+                logging.error(f"Failed to parse SVG heatmap: {e}")
+                logging.error(f"SVG content: {heatmap_svg}")
+                heatmap_points = []
 
             heatmap_analysis = analyze_heatmap_data(heatmap_points)
 
