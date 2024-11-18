@@ -499,6 +499,7 @@ def calculate_watch_time(views, duration_seconds):
 def main():
 
     nltk.download('punkt')
+    nltk.download('punkt_tab')
     nltk.download('stopwords')
     os.system('playwright install')
     # Start the Streamlit app
