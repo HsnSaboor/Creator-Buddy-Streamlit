@@ -23,6 +23,7 @@ import orjson
 from io import BytesIO
 import os
 import math
+import json
 from typing import List, Dict, Optional, Any
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, Transcript, TranscriptList
 import spacy
@@ -339,6 +340,7 @@ def analyze_heatmap_data(heatmap_points: List[Dict[str, float]], threshold: floa
 from typing import List, Dict, Any, Optional
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
+import json  # Add this import
 
 def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
     """
