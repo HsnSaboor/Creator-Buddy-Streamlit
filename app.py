@@ -31,10 +31,7 @@ import uvloop
 import streamlit as st
 from PIL import Image
 
-nltk.download('punkt')
-nltk.download('stopwords')
 
-os.system('playwright install')
 
 # Configure uvloop for faster asyncio event loops
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -948,4 +945,7 @@ def beautify_output(input_text):
     return '\n'.join(json_output)
 
 if __name__ == "__main__":
+    nltk.download('punkt')
+    nltk.download('stopwords')
+    os.system('playwright install')
     main()
