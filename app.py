@@ -19,7 +19,6 @@ import cv2
 import pytesseract
 from groq import Groq
 from colorthief import ColorThief
-import orjson
 from io import BytesIO
 import os
 import math
@@ -225,7 +224,7 @@ def extract_topics(text: str) -> Dict[str, str]:
         )
 
         # Ensure the content is a valid JSON and return the extracted topics
-        return orjson.loads(chat_completion.choices[0].message.content)
+        return json.loads(chat_completion.choices[0].message.content)
     except Exception as e:
         print(f"Error extracting topics: {e}")
         return {"main_topic": "N/A", "niche_topic": "N/A", "third_topic": "N/A"}
@@ -259,7 +258,7 @@ def summarize_video_content(text: str) -> Dict[str, str]:
         )
 
         # Ensure the content is a valid JSON and return the video summary
-        return orjson.loads(chat_completion.choices[0].message.content)
+        return json.loads(chat_completion.choices[0].message.content)
     except Exception as e:
         print(f"Error summarizing video content: {e}")
         return {"video_summary": "Summary not available"}
@@ -804,7 +803,7 @@ async def extract_video_data(video_id):
             }
 
             # Converting JSON to string with proper indentation
-            output_json_str = orjson.dumps(output_json, option=orjson.OPT_INDENT_2).decode('utf-8')
+            output_json_str = json.dumps(output_json, indent=4)
 
             with open(f'{video_id}_data.json', 'w', encoding='utf-8') as json_file:
                 json_file.write(output_json_str)
