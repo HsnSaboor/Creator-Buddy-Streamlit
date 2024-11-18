@@ -522,7 +522,7 @@ def main():
             st.write("Please enter a valid YouTube video ID.")
 
 async def extract_video_data(video_id):
-    logging.info(f"Extracting video data for video ID: {video_id}")
+    logging.info(f"Warming Up ...")
     
     try:
         async with async_playwright() as p:
@@ -552,7 +552,7 @@ async def extract_video_data(video_id):
             # Ensure the page is fully loaded
             await page.wait_for_load_state('networkidle')
 
-            logging.info("YouTube cached successfully.")
+            logging.info("Running The Race.")
 
             video_url = f"https://www.youtube.com/watch?v={video_id}"
             await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
