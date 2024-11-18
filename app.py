@@ -47,30 +47,6 @@ client = Groq(
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Predefined user agents, resolutions, and browser configurations
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/91.0.864.59 Safari/537.36"
-]
-
-RESOLUTIONS = [
-    {"width": 1024, "height": 768},
-    {"width": 1280, "height": 720},
-    {"width": 1366, "height": 768},
-    {"width": 1440, "height": 900},
-    {"width": 1600, "height": 900}
-]
-
-BROWSERS = ["chromium"]
-
-# Global variables to store browser and context
-browser = None
-context = None
-page = None
-
 async def extract_video_data(video_id, page):
     logging.info(f"Extracting video data for video ID: {video_id}")
     
