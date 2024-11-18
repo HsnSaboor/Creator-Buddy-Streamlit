@@ -336,6 +336,10 @@ def analyze_heatmap_data(heatmap_points: List[Dict[str, float]], threshold: floa
         'total_falls': len(significant_falls)
     }
 
+from typing import List, Dict, Any, Optional
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
+
 def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
     """
     Fetch the transcript for a YouTube video, prioritizing English transcripts.
@@ -385,16 +389,6 @@ def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
         else:
             print("No English transcript available or translatable for this video.")
             return None
-
-    except TranscriptsDisabled:
-        print("Transcripts are disabled for this video.")
-        return None
-    except NoTranscriptFound:
-        print("No transcripts found for this video.")
-        return None
-    except Exception as e:
-        print(f"Error fetching transcript: {e}")
-        return None
 
     except TranscriptsDisabled:
         print("Transcripts are disabled for this video.")
@@ -690,7 +684,7 @@ async def extract_video_data(video_id):
 
             # Fetch transcript
             transcript = fetch_transcript(video_id)
-
+    
             # Check if transcript is available
             if transcript is None or len(transcript) == 0:
                 print(f"No transcript available for video {video_id}. Skipping transcript analysis.")
@@ -699,7 +693,7 @@ async def extract_video_data(video_id):
             else:
                 # Proceed with transcript-related logic if transcript is available
                 significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis)
-
+    
             # Ensure significant_transcript_sections has default keys
             rises_sections = significant_transcript_sections.get('rises', [])
             falls_sections = significant_transcript_sections.get('falls', [])
