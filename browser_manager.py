@@ -64,4 +64,11 @@ async def initialize_browser():
             logging.info("YouTube cached successfully.")
     return browser, context, page
 
-
+async def close_browser():
+    global browser, context, page
+    if browser:
+        await context.close()
+        await browser.close()
+        browser = None
+        context = None
+        page = None
