@@ -399,6 +399,68 @@ def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
         print(f"Error fetching transcript: {e}")
         return None
 
+def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Fetch the transcript for a YouTube video, prioritizing English transcripts.
+    If no English transcript is available, translate an available transcript to English.
+
+    Args:
+        video_id (str): The YouTube video ID.
+
+    Returns:
+        Optional[List[Dict[str, Any]]]: The transcript as a list of dictionaries, or None if not found.
+    """
+    try:
+        # List all available transcripts for the video
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+
+        # Prioritize English transcripts
+        english_transcript = None
+        for transcript in transcript_list:
+            if transcript.language_code == 'en':
+                english_transcript = transcript
+                if not transcript.is_generated:  # Prefer manual transcripts
+                    break
+        
+        # If no English transcript, try translating a non-generated transcript to English
+        if not english_transcript:
+            for transcript in transcript_list:
+                if not transcript.is_generated:  # Try translating manual transcript
+                    try:
+                        english_transcript = transcript.translate('en')
+                        break
+                    except Exception as e:
+                        print(f"Error translating transcript: {e}")
+        
+        # If no manual or translated English transcript, use an auto-generated transcript
+        if not english_transcript:
+            for transcript in transcript_list:
+                if transcript.is_generated:
+                    try:
+                        english_transcript = transcript.translate('en')
+                        break
+                    except Exception as e:
+                        print(f"Error translating auto-generated transcript: {e}")
+        
+        # Fetch and return the transcript data if available
+        if english_transcript:
+            return english_transcript.fetch()
+        else:
+            print("No English transcript available or translatable for this video.")
+            return None
+
+    except TranscriptsDisabled:
+        print("Transcripts are disabled for this video.")
+        return None
+    except NoTranscriptFound:
+        print("No transcripts found for this video.")
+        return None
+    except Exception as e:
+        print(f"Error fetching transcript: {e}")
+        return None
+
+
+
 def get_significant_transcript_sections(transcript: Optional[List[Dict[str, any]]], analysis_data: Dict[str, any]) -> Dict[str, List[List[Dict[str, any]]]]:
     if not transcript:
         print("Transcript is unavailable. Returning empty significant sections.")
@@ -722,6 +784,7 @@ async def extract_video_data(video_id):
 
             
             # Enhancing output for better readability with newlines in long text fields
+            # Ensure transcript is included in the output
             output_json = {
                 "title": title,
                 "video_statistics": {
