@@ -31,8 +31,6 @@ import uvloop
 import streamlit as st
 from PIL import Image
 
-
-
 # Configure uvloop for faster asyncio event loops
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -714,7 +712,7 @@ async def extract_video_data(video_id):
             niche_topic = topics.get('niche_topic', 'N/A')
             third_topic = topics.get('third_topic', 'N/A')
 
-            cta_list = detect_ctas(Transcript)
+            cta_list = detect_ctas(description)
             
             # Get summary
             summary_response = summarize_video_content(combined_text)
