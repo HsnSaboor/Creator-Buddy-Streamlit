@@ -952,3 +952,4 @@ def beautify_output(input_text):
 
 if __name__ == "__main__":
     main()
+
