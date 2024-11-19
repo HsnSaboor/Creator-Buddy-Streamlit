@@ -1,10 +1,11 @@
 import asyncio
-import logging
-import random
+import streamlit as st
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
-import regex as re
+import random
+import re
+import logging
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize, sent_tokenize
@@ -15,24 +16,15 @@ import xml.etree.ElementTree as ET
 from textblob import TextBlob
 from youtube_comment_downloader import YoutubeCommentDownloader, SORT_BY_RECENT
 import requests
-import cv2
+from PIL import Image
 import pytesseract
 from groq import Groq
 from colorthief import ColorThief
-from io import BytesIO
-import os
-import math
 import json
+from io import BytesIO
+import math
 from typing import List, Dict, Optional, Any
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, Transcript, TranscriptList
-import spacy
-import dask.dataframe as dd
-import uvloop
-import streamlit as st
-from PIL import Image
-
-# Configure uvloop for faster asyncio event loops
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 client = Groq(
     api_key='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'
@@ -60,7 +52,7 @@ RESOLUTIONS = [
 
 BROWSERS = ["chromium"]
 
-def detect_ctas(description):
+def detect_ctas(Transcript):
     # List of common CTA phrases and patterns
     cta_patterns = [
         r'\bsubscribe\b', r'\bfollow\b', r'\bcheck\s+the\s+link\b', r'\bclick\s+here\b',
@@ -92,7 +84,7 @@ def detect_ctas(description):
     # Detect CTA phrases in the description
     detected_ctas = []
     for pattern in cta_patterns:
-        matches = re.findall(pattern, description)
+        matches = re.findall(pattern, Transcript)
         detected_ctas.extend(matches)
     
     # Count the occurrences of each CTA
@@ -334,6 +326,10 @@ def analyze_heatmap_data(heatmap_points: List[Dict[str, float]], threshold: floa
         'total_falls': len(significant_falls)
     }
 
+from typing import List, Dict, Any, Optional
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
+
 def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
     """
     Fetch the transcript for a YouTube video, prioritizing English transcripts.
@@ -393,7 +389,7 @@ def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
     except Exception as e:
         print(f"Error fetching transcript: {e}")
         return None
-        
+
 def get_significant_transcript_sections(transcript: Optional[List[Dict[str, any]]], analysis_data: Dict[str, any]) -> Dict[str, List[List[Dict[str, any]]]]:
     if not transcript:
         print("Transcript is unavailable. Returning empty significant sections.")
@@ -494,231 +490,191 @@ def calculate_watch_time(views, duration_seconds):
         "watch_time_per_user": watch_time_per_user_formatted
     }
 
-def main():
-    # Start the Streamlit app
-    st.title("YouTube Video Data Extractor")
-    video_id = st.text_input("Enter the YouTube video ID:")
-
-    if st.button("Extract Data"):
-        if video_id:
-            st.write("Extracting data...")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                data = loop.run_until_complete(extract_video_data(video_id))
-                st.json(data)
-            except Exception as e:
-                st.error(f"Error during extraction: {e}")
-            finally:
-                loop.close()
-        else:
-            st.write("Please enter a valid YouTube video ID.")
-
 async def extract_video_data(video_id):
     logging.info(f"Extracting video data for video ID: {video_id}")
-    
-    try:
-        async with async_playwright() as p:
-            browser_type = random.choice(BROWSERS)
-            browser = await getattr(p, browser_type).launch(
-                headless=True,
-                args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage", "--disable-extensions", "--disable-plugins"]
-            )
+    async with async_playwright() as p:
+        browser_type = random.choice(BROWSERS)
+        browser = await getattr(p, browser_type).launch(
+            headless=True,
+            args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage", "--disable-extensions", "--disable-plugins"]
+        )
 
-            context = await browser.new_context(
-                user_agent=random.choice(USER_AGENTS),
-                viewport=random.choice(RESOLUTIONS),
-                locale="en-US",
-                ignore_https_errors=True,
-                java_script_enabled=True,
-                bypass_csp=True
-            )
+        context = await browser.new_context(
+            user_agent=random.choice(USER_AGENTS),
+            viewport=random.choice(RESOLUTIONS),
+            locale="en-US",
+            ignore_https_errors=True,
+            java_script_enabled=True,
+            bypass_csp=True
+        )
 
-            await context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["video", "audio", "font"] else route.continue_())
+        await context.route("**/*", lambda route: route.abort() if route.request.resource_type in ["video", "audio", "font"] else route.continue_())
 
-            page = await context.new_page()
+        page = await context.new_page()
 
-            # Cache YouTube by running a sample video
-            sample_video_url = "https://www.youtube.com/watch?v=kXTyejeVwr8"
-            await page.goto(sample_video_url, wait_until="domcontentloaded", timeout=60000)
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
 
-            # Ensure the page is fully loaded
-            await page.wait_for_load_state('networkidle')
+        if "m.youtube.com" in page.url:
+            await page.goto(video_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
 
-            logging.info("YouTube cached successfully.")
+        expand_selector = 'tp-yt-paper-button#expand'
 
-            video_url = f"https://www.youtube.com/watch?v={video_id}"
-            await page.goto(video_url, wait_until="domcontentloaded", timeout=60000)
+        try:
+            await page.wait_for_selector(expand_selector, timeout=20000)
+            expand_button = await page.query_selector(expand_selector)
+            if expand_button:
+                await expand_button.click()
+        except PlaywrightTimeoutError:
+            logging.warning("Expand button not found.")
 
-            if "m.youtube.com" in page.url:
-                await page.goto(video_url.replace("m.youtube.com", "www.youtube.com"), wait_until="networkidle")
+        await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        await page.wait_for_timeout(8000)
 
-            expand_selector = 'tp-yt-paper-button#expand'
+        content = await page.content()
+        tree = html.fromstring(content)
 
-            try:
-                await page.wait_for_selector(expand_selector, timeout=20000)
-                expand_button = await page.query_selector(expand_selector)
-                if expand_button:
-                    await expand_button.click()
-            except PlaywrightTimeoutError:
-                logging.warning("Expand button not found.")
+        for elem in tree.xpath('//head | //style | //script'):
+            elem.getparent().remove(elem)
 
-            await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-            await page.wait_for_timeout(8000)
+        title_element = tree.xpath('//h1[@class="style-scope ytd-watch-metadata"]/yt-formatted-string')
+        title = title_element[0].text_content().strip() if title_element else "Title not found"
 
-            content = await page.content()
-            tree = html.fromstring(content)
+        info_element = tree.xpath('//yt-formatted-string[@id="info"]')
+        if info_element:
+            info_text = info_element[0].text_content().strip()
+            views, publish_time, *tags = info_text.split('  ')
+            tags = [tag.strip() for tag in tags if tag.strip()]
+        else:
+            views, publish_time, tags = "Views not found", "Publish time not found", []
 
-            for elem in tree.xpath('//head | //style | //script'):
-                elem.getparent().remove(elem)
+        if views != "Views not found":
+            views = int(re.sub(r'\D', '', views))
 
-            title_element = tree.xpath('//h1[@class="style-scope ytd-watch-metadata"]/yt-formatted-string')
-            title = title_element[0].text_content().strip() if title_element else "Title not found"
+        like_button_selector = '//button[contains(@class, "yt-spec-button-shape-next") and @title="I like this"]'
+        likes_element = await page.query_selector(like_button_selector)
+        likes = "Likes not found"
+        if likes_element:
+            aria_label = await likes_element.get_attribute('aria-label')
+            if aria_label:
+                match = re.search(r'(\d[\d,]*)', aria_label)
+                if match:
+                    likes = int(match.group(1).replace(',', ''))
 
-            info_element = tree.xpath('//yt-formatted-string[@id="info"]')
-            if info_element:
-                info_text = info_element[0].text_content().strip()
-                views, publish_time, *tags = info_text.split('  ')
-                tags = [tag.strip() for tag in tags if tag.strip()]
+        heatmap_svg = await extract_heatmap_svgs(page)
+
+        duration_element = tree.xpath('//span[@class="ytp-time-duration"]')
+        duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
+        duration_to_seconds_value = duration_to_seconds(duration)
+
+        heatmap_points = parse_svg_heatmap(heatmap_svg, duration_to_seconds_value)
+
+        heatmap_analysis = analyze_heatmap_data(heatmap_points)
+
+        # Ensure heatmap_analysis has default values
+        average_attention = heatmap_analysis.get('average_attention', 0)
+        total_rises = heatmap_analysis.get('total_rises', 0)
+        total_falls = heatmap_analysis.get('total_falls', 0)
+        significant_rises = heatmap_analysis.get('significant_rises', [])
+        significant_falls = heatmap_analysis.get('significant_falls', [])
+
+        description_elements = tree.xpath('//ytd-text-inline-expander[@id="description-inline-expander"]//yt-attributed-string[@user-input=""]//span[@class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap"]')
+        description_parts = []
+        links = set()
+
+        for element in description_elements:
+            text_content = element.text_content().strip()
+            if text_content and text_content not in description_parts:
+                description_parts.append(text_content)
+            for link in element.xpath('.//a'):
+                link_text = link.text_content().strip()
+                link_href = link.get('href')
+                if link_text and link_href and link_href not in links:
+                    if link_href.startswith('https://www.youtube.com/redirect'):
+                        link_href = convert_yt_redirect_to_normal_link(link_href)
+                    elif link_href.startswith('/watch?'):
+                        link_href = convert_yt_watch_to_full_link(link_href)
+                    elif link_href.startswith('/hashtag/'):
+                        link_text = convert_hashtag_to_link(link_text)  # This line is incorrect, fix it
+                        link_href = f"https://www.youtube.com{link_href}"
+                    description_parts.append(f"[{link_text}]({link_href})")
+                    links.add(link_href)
+
+        description = ' '.join(description_parts)
+
+        comments_xpath = "//div[@id='leading-section']//h2[@id='count']//yt-formatted-string[@class='count-text style-scope ytd-comments-header-renderer']/span[1]/text()"
+        comment_count_element = tree.xpath(comments_xpath)
+        if comment_count_element:
+            comment_count_text = comment_count_element[0]
+            logging.info(f"Extracted comment count text: {comment_count_text}")
+            if comment_count_text.isdigit():
+                comment_count = int(comment_count_text)
             else:
-                views, publish_time, tags = "Views not found", "Publish time not found", []
+                comment_count = int(''.join(filter(str.isdigit, comment_count_text)))
+        else:
+            logging.warning("Comment count element not found")
+            comment_count = 1
 
-            if views != "Views not found":
-                views = int(re.sub(r'\D', '', views))
+        print(f"Total number of comments: {comment_count}")
 
-            like_button_selector = '//button[contains(@class, "yt-spec-button-shape-next") and @title="I like this"]'
-            likes_element = await page.query_selector(like_button_selector)
-            likes = "Likes not found"
-            if likes_element:
-                aria_label = await likes_element.get_attribute('aria-label')
-                if aria_label:
-                    match = re.search(r'(\d[\d,]*)', aria_label)
-                    if match:
-                        likes = int(match.group(1).replace(',', ''))
+        comments = await extract_comments(video_id)
+        beautified_comments = [{"author": comment['author'], "text": re.sub(r'<.*?>', '', comment['text'])} for comment in comments]
 
-            heatmap_svg = await extract_heatmap_svgs(page)
+        overall_sentiment = analyze_comments_sentiment(beautified_comments, comment_count)
 
-            duration_element = tree.xpath('//span[@class="ytp-time-duration"]')
-            duration = duration_element[0].text_content().strip() if duration_element else "Duration not found"
-            duration_to_seconds_value = duration_to_seconds(duration)
+        comment_to_view_ratio = comment_count / views * 100 if views else 0
+        like_to_views_ratio = likes / views * 100 if views else 0
+        comment_to_like_ratio = comment_count / likes * 100 if likes else 0
+        # Calculate the engagement rate
+        engagement_rate = (likes + comment_count) / views * 100 if views else 0
 
-            try:
-                heatmap_points = parse_svg_heatmap(heatmap_svg, duration_to_seconds_value)
-            except ET.ParseError as e:
-                logging.error(f"Failed to parse SVG heatmap: {e}")
-                logging.error(f"SVG content: {heatmap_svg}")
-                heatmap_points = []
+        logging.info(f"Getting AI Analysis for video ID: {video_id}")
 
-            heatmap_analysis = analyze_heatmap_data(heatmap_points)
+        dominant_color, palette, thumbnail_text = analyze_thumbnail(video_id)
 
-            # Ensure heatmap_analysis has default values
-            average_attention = heatmap_analysis.get('average_attention', 0)
-            total_rises = heatmap_analysis.get('total_rises', 0)
-            total_falls = heatmap_analysis.get('total_falls', 0)
-            significant_rises = heatmap_analysis.get('significant_rises', [])
-            significant_falls = heatmap_analysis.get('significant_falls', [])
+        # Fetch transcript
+        transcript = fetch_transcript(video_id)
 
-            description_elements = tree.xpath('//ytd-text-inline-expander[@id="description-inline-expander"]//yt-attributed-string[@user-input=""]//span[@class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap"]')
-            description_parts = []
-            links = set()
+        # Check if transcript is available
+        if transcript is None or len(transcript) == 0:
+            print(f"No transcript available for video {video_id}. Skipping transcript analysis.")
+            # Assign default values to avoid KeyError
+            significant_transcript_sections = {'rises': [], 'falls': []}
+        else:
+            # Proceed with transcript-related logic if transcript is available
+            significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis)
 
-            for element in description_elements:
-                text_content = element.text_content().strip()
-                if text_content and text_content not in description_parts:
-                    description_parts.append(text_content)
-                for link in element.xpath('.//a'):
-                    link_text = link.text_content().strip()
-                    link_href = link.get('href')
-                    if link_text and link_href and link_href not in links:
-                        if link_href.startswith('https://www.youtube.com/redirect'):
-                            link_href = convert_yt_redirect_to_normal_link(link_href)
-                        elif link_href.startswith('/watch?'):
-                            link_href = convert_yt_watch_to_full_link(link_href)
-                        elif link_href.startswith('/hashtag/'):
-                            link_text = convert_hashtag_to_link(link_text)  # This line is incorrect, fix it
-                            link_href = f"https://www.youtube.com{link_href}"
-                        description_parts.append(f"[{link_text}]({link_href})")
-                        links.add(link_href)
+        # Ensure significant_transcript_sections has default keys
+        rises_sections = significant_transcript_sections.get('rises', [])
+        falls_sections = significant_transcript_sections.get('falls', [])
 
-            description = ' '.join(description_parts)
+        # Extract topics
+        combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
+        topics = extract_topics(combined_text)
 
-            comments_xpath = "//div[@id='leading-section']//h2[@id='count']//yt-formatted-string[@class='count-text style-scope ytd-comments-header-renderer']/span[1]/text()"
-            comment_count_element = tree.xpath(comments_xpath)
-            if comment_count_element:
-                comment_count_text = comment_count_element[0]
-                logging.info(f"Extracted comment count text: {comment_count_text}")
-                if comment_count_text.isdigit():
-                    comment_count = int(comment_count_text)
-                else:
-                    comment_count = int(''.join(filter(str.isdigit, comment_count_text)))
-            else:
-                logging.warning("Comment count element not found")
-                comment_count = 1
+        top_keywords = analyze_keywords(title, description)
+        insights, suggestion = get_keyword_insights(top_keywords, title, description)
 
-            print(f"Total number of comments: {comment_count}")
+        readability_score, rating = calculate_readability_score(description)
+        tips = get_readability_tips(rating)
 
-            # Parallel execution of comment extraction and thumbnail analysis
-            comments_task = asyncio.create_task(extract_comments(video_id))
-            thumbnail_task = asyncio.create_task(asyncio.to_thread(analyze_thumbnail, video_id))
+        # Ensure topics are properly retrieved
+        main_topic = topics.get('main_topic', 'N/A')
+        niche_topic = topics.get('niche_topic', 'N/A')
+        third_topic = topics.get('third_topic', 'N/A')
 
-            comments = await comments_task
-            beautified_comments = [{"author": comment['author'], "text": re.sub(r'<.*?>', '', comment['text'])} for comment in comments]
+        # Get summary
+        summary_response = summarize_video_content(combined_text)
+        summary = summary_response.get("video_summary", "Summary not available")
 
-            dominant_color, palette, thumbnail_text = await thumbnail_task
+        cta_list = detect_ctas(description)
 
-            overall_sentiment = analyze_comments_sentiment(beautified_comments, comment_count)
+        watch_time = calculate_watch_time(views, duration_to_seconds_value) if duration_to_seconds_value else "Duration not available"
 
-            comment_to_view_ratio = comment_count / views * 100 if views else 0
-            like_to_views_ratio = likes / views * 100 if views else 0
-            comment_to_like_ratio = comment_count / likes * 100 if likes else 0
-            # Calculate the engagement rate
-            engagement_rate = (likes + comment_count) / views * 100 if views else 0
+        logging.info(f"Creating Output json for video ID: {video_id}")
 
-            logging.info(f"Getting AI Analysis for video ID: {video_id}")
-
-            # Fetch transcript
-            transcript = fetch_transcript(video_id)
-            
-            # Check if transcript is available
-            if transcript is None or len(transcript) == 0:
-                print(f"No transcript available for video {video_id}. Skipping transcript analysis.")
-                # Assign default values to avoid KeyError
-                significant_transcript_sections = {'rises': [], 'falls': []}
-            else:
-                # Proceed with transcript-related logic if transcript is available
-                significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis)
-            
-            # Ensure significant_transcript_sections has default keys
-            rises_sections = significant_transcript_sections.get('rises', [])
-            falls_sections = significant_transcript_sections.get('falls', [])
-            
-            # Extract topics
-            combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
-            topics = extract_topics(combined_text)
-
-            top_keywords = analyze_keywords(title, description)
-            insights, suggestion = get_keyword_insights(top_keywords, title, description)
-
-            readability_score, rating = calculate_readability_score(description)
-            tips = get_readability_tips(rating)
-            
-            # Ensure topics are properly retrieved
-            main_topic = topics.get('main_topic', 'N/A')
-            niche_topic = topics.get('niche_topic', 'N/A')
-            third_topic = topics.get('third_topic', 'N/A')
-
-            cta_list = detect_ctas(description)
-            
-            # Get summary
-            summary_response = summarize_video_content(combined_text)
-            summary = summary_response.get("video_summary", "Summary not available")
-
-            watch_time = calculate_watch_time(views, duration_to_seconds_value) if duration_to_seconds_value else "Duration not available"
-
-            
-            # Enhancing output for better readability with newlines in long text fields
-            # Ensure transcript is included in the output
-            output_json = {
+        # Enhancing output for better readability with newlines in long text fields
+        output_json = {
                 "title": title,
                 "video_statistics": {
                     "video_id": video_id,
@@ -788,24 +744,21 @@ async def extract_video_data(video_id):
                         for entry in transcript
                     ]
                 },
-                "transcript": transcript if transcript else [],  # Ensure transcript is included in the output
+                "transcript": transcript,  # Add transcript data
                 "comments": {
                     "total_comments": comment_count,
                     "list": beautified_comments
                 }
             }
+
             # Converting JSON to string with proper indentation
-            output_json_str = json.dumps(output_json, indent=4)
+        output_json_str = json.dumps(output_json, indent=4)
 
-            with open(f'{video_id}_data.json', 'w', encoding='utf-8') as json_file:
-                json_file.write(output_json_str)
+        with open(f'{video_id}_data.json', 'w', encoding='utf-8') as json_file:
+            json_file.write(output_json_str)
 
-            logging.info("Extraction and json file creation completed successfully.")
-
-            return output_json
-    except Exception as e:
-        logging.error(f"Error during video extraction: {e}")
-        return {"error": str(e)}
+        logging.info("Extraction and json file creation completed successfully.")
+        return output_json
 
 async def extract_heatmap_svgs(page):
     # Wait for the network to be idle to ensure all resources have loaded
@@ -946,5 +899,15 @@ def beautify_output(input_text):
     # Join the json output into a single string
     return '\n'.join(json_output)
 
-if __name__ == "__main__":
-    main()
+# Streamlit app
+st.title("YouTube Video Analyzer")
+
+video_id = st.text_input("Enter the YouTube video ID:")
+
+if st.button("Analyze"):
+    if video_id:
+        with st.spinner("Analyzing video..."):
+            result = asyncio.run(extract_video_data(video_id))
+            st.json(result)
+    else:
+        st.error("Please enter a valid YouTube video ID.")
