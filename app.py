@@ -60,7 +60,7 @@ RESOLUTIONS = [
 
 BROWSERS = ["chromium"]
 
-def detect_ctas(Transcript):
+def detect_ctas(description):
     # List of common CTA phrases and patterns
     cta_patterns = [
         r'\bsubscribe\b', r'\bfollow\b', r'\bcheck\s+the\s+link\b', r'\bclick\s+here\b',
@@ -92,7 +92,7 @@ def detect_ctas(Transcript):
     # Detect CTA phrases in the description
     detected_ctas = []
     for pattern in cta_patterns:
-        matches = re.findall(pattern, Transcript)
+        matches = re.findall(pattern, description)
         detected_ctas.extend(matches)
     
     # Count the occurrences of each CTA
@@ -792,7 +792,7 @@ async def extract_video_data(video_id):
                         for entry in transcript
                     ]
                 },
-                "transcript": transcript,  # Add transcript data
+                "transcript": transcript if transcript else [],  # Ensure transcript is included in the output
                 "comments": {
                     "total_comments": comment_count,
                     "list": beautified_comments
@@ -952,4 +952,3 @@ def beautify_output(input_text):
 
 if __name__ == "__main__":
     main()
-
