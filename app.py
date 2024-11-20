@@ -641,7 +641,6 @@ async def extract_video_data(video_id):
             # Assign default values to avoid KeyError
             significant_transcript_sections = {'rises': [], 'falls': []}
         else:
-            print(f"Transcript Found: {transcript}")
             # Proceed with transcript-related logic if transcript is available
             significant_transcript_sections = get_significant_transcript_sections(transcript, heatmap_analysis)
 
@@ -649,7 +648,7 @@ async def extract_video_data(video_id):
         rises_sections = significant_transcript_sections.get('rises', [])
         falls_sections = significant_transcript_sections.get('falls', [])
 
-        
+        print(f"Transcript Found: {transcript}")
 
         # Extract topics
         combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
