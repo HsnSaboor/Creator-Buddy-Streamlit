@@ -1,11 +1,16 @@
 import asyncio
+import logging
+import json
 import streamlit as st
+from pathlib import Path
+
+# Import necessary functions and variables from the existing code
+# Ensure all required modules are imported here
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from lxml import html, etree
 from urllib.parse import parse_qs, urlparse
 import random
 import re
-import logging
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize, sent_tokenize
@@ -20,16 +25,11 @@ from PIL import Image
 import pytesseract
 from groq import Groq
 from colorthief import ColorThief
-import json
 from io import BytesIO
 import math
 from typing import List, Dict, Optional, Any
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, Transcript, TranscriptList
-from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Define the asynchronous extraction function (assuming it's defined elsewhere)
 client = Groq(
     api_key='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'
 )
