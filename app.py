@@ -25,7 +25,11 @@ from io import BytesIO
 import math
 from typing import List, Dict, Optional, Any
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, Transcript, TranscriptList
+from pathlib import Path
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Define the asynchronous extraction function (assuming it's defined elsewhere)
 client = Groq(
     api_key='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'
 )
@@ -648,8 +652,6 @@ async def extract_video_data(video_id):
         rises_sections = significant_transcript_sections.get('rises', [])
         falls_sections = significant_transcript_sections.get('falls', [])
 
-        print(f"Transcript Found: {transcript}")
-
         # Extract topics
         combined_text = f"{title}\n{description}\n{' '.join([entry['text'] for entry in transcript[:500]])}\n{thumbnail_text}\n{tags}" if transcript else f"{title}\n{description}"
         topics = extract_topics(combined_text)
@@ -760,7 +762,6 @@ async def extract_video_data(video_id):
             json_file.write(output_json_str)
 
         logging.info("Extraction and json file creation completed successfully.")
-        return output_json
 
 async def extract_heatmap_svgs(page):
     # Wait for the network to be idle to ensure all resources have loaded
@@ -901,15 +902,43 @@ def beautify_output(input_text):
     # Join the json output into a single string
     return '\n'.join(json_output)
 
-# Streamlit app
-st.title("YouTube Video Analyzer")
+async def main_extraction(video_id):
+    try:
+        # Run the video data extraction
+        await extract_video_data(video_id)
+        # Read the output JSON file
+        json_file_path = Path(f'{video_id}_data.json')
+        if json_file_path.exists():
+            with open(json_file_path, 'r', encoding='utf-8') as json_file:
+                output_json = json.load(json_file)
+            return output_json
+        else:
+            raise FileNotFoundError(f"Output JSON file not found for video ID: {video_id}")
+    except Exception as e:
+        logging.error(f"An error occurred during extraction: {e}")
+        return None
 
-video_id = st.text_input("Enter the YouTube video ID:")
+def main():
+    st.title("YouTube Video Data Extractor")
 
-if st.button("Analyze"):
-    if video_id:
-        with st.spinner("Analyzing video..."):
-            result = asyncio.run(extract_video_data(video_id))
-            st.json(result)
-    else:
-        st.error("Please enter a valid YouTube video ID.")
+    # Input field for video ID
+    video_id = st.text_input("Enter the YouTube video ID:")
+
+    if st.button("Extract Data"):
+        if not video_id:
+            st.warning("Please enter a video ID.")
+        else:
+            st.info("Processing, please wait...")
+
+            # Run the asynchronous extraction
+            output_json = asyncio.run(main_extraction(video_id))
+
+            if output_json:
+                # Display the JSON output
+                st.subheader("Output JSON")
+                st.json(output_json)
+            else:
+                st.error("Data extraction failed. Please check the video ID and try again.")
+
+if __name__ == "__main__":
+    main()
