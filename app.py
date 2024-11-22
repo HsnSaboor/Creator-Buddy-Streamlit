@@ -24,11 +24,14 @@ import requests
 from PIL import Image
 import pytesseract
 from groq import Groq
+import os
 from colorthief import ColorThief
 from io import BytesIO
 import math
 from typing import List, Dict, Optional, Any
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, Transcript, TranscriptList
+
+os.system('playwright insatll')
 
 client = Groq(
     api_key='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'
