@@ -33,9 +33,9 @@ from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, Tr
 
 os.system('playwright install')
 
-nltk.download(punkt_tab)
+nltk.download('punkt_tab')
 
-nltk.download(stopwords)
+nltk.download('stopwords')
 
 client = Groq(
     api_key='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'
