@@ -359,7 +359,7 @@ def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
         # Prioritize English transcripts
         english_transcript = None
         for transcript in transcript_list:
-            if transcript.language_code == 'tr':
+            if transcript.language_code == 'en':
                 english_transcript = transcript
                 if not transcript.is_generated:  # Prefer manual transcripts
                     break
@@ -369,7 +369,7 @@ def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
             for transcript in transcript_list:
                 if not transcript.is_generated:  # Try translating manual transcript
                     try:
-                        english_transcript = transcript.translate('tr')
+                        english_transcript = transcript.translate('en')
                         break
                     except Exception as e:
                         print(f"Error translating transcript: {e}")
@@ -379,7 +379,7 @@ def fetch_transcript(video_id: str) -> Optional[List[Dict[str, Any]]]:
             for transcript in transcript_list:
                 if transcript.is_generated:
                     try:
-                        english_transcript = transcript.translate('tr')
+                        english_transcript = transcript.translate('en')
                         break
                     except Exception as e:
                         print(f"Error translating auto-generated transcript: {e}")
